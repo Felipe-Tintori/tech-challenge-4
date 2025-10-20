@@ -1,27 +1,33 @@
 import React, { useEffect, useRef, useState } from "react";
 import { StyleSheet, TouchableOpacity, View } from "react-native";
-import { IconButton, Portal, Text } from "react-native-paper";
+import { IconButton, Text, Portal } from "react-native-paper";
 import { styles } from "./styles";
 import Filter from "../../../filter";
 import { ITransaction } from "../../../../../../interface/transaction";
-import { useTransactions } from "@features/transactions";
+import { useTransactions } from "../../../../../../store/hooks/useTransactions";
+import { useAuth } from "../../../../../../store/hooks/useAuth";
 
 export const FilterButton = () => {
   const {
-    transactions,
-    loading,
+    allTransactions,
+    filteredTransactions,
+    isLoading,
     error,
-    setTransactions,
-    setFilter,
-    filter,
-    refreshTransactions,
+    filters,
+    applyFilters,
+    removeFilters,
+    loadTransactions,
   } = useTransactions();
+  const { user } = useAuth(); // Pegamos o user aqui fora do Portal
   const [filterVisible, setFilterVisible] = useState(false);
+  
+  // Calcular hasActiveFilters baseado no estado do Redux
+  const hasActiveFilters = filters && Object.keys(filters).length > 0;
 
-  const handleFilter = (filteredTransactions: ITransaction[]) => {
-    setTransactions(filteredTransactions); // Atualiza as transações filtradas
+  const handleFilter = (filterCriteria: any) => {
+    console.log("Recebendo critérios de filtro:", filterCriteria);
+    applyFilters(filterCriteria); // Aplica os filtros no Redux
     setFilterVisible(false); // Fecha o filtro
-    setFilter(true);
   };
 
   const clearFilter = () => {
@@ -29,14 +35,13 @@ export const FilterButton = () => {
   };
 
   const clearFilterTransiction = () => {
-    refreshTransactions();
-    setFilter(false);
+    removeFilters();
   };
 
   return (
     <>
       <TouchableOpacity
-        style={!filter ? styles.filterButton : styles.filterButtonOn}
+        style={!hasActiveFilters ? styles.filterButton : styles.filterButtonOn}
         onPress={() => setFilterVisible(true)}
       >
         <IconButton
@@ -46,7 +51,7 @@ export const FilterButton = () => {
           iconColor="#FFF"
         />
         <Text style={styles.filterText}>Filtros</Text>
-        {filter && (
+        {hasActiveFilters && (
           <>
             <IconButton
               style={styles.icons}
@@ -69,10 +74,11 @@ export const FilterButton = () => {
                 left: 0,
                 right: 0,
                 zIndex: 99999999,
+                backgroundColor: 'rgba(0,0,0,0.5)',
               },
             ]}
           >
-            <Filter onClose={clearFilter} onFilter={handleFilter} />
+            <Filter onClose={clearFilter} onFilter={handleFilter} user={user} />
           </View>
         </Portal>
       )}

@@ -1,5 +1,5 @@
 // No componente Transfer
-import React, { useContext, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { View, ScrollView } from "react-native";
 import { useForm } from "react-hook-form";
 import { Button, IconButton } from "react-native-paper";
@@ -23,7 +23,8 @@ import {
   IFirebaseStorage,
 } from "../../../enum/firebaseCollection";
 import BytebankLoading from "../../../shared/components/loading";
-import UserContext from "../../auth/context/UserContext";
+import { useAuth } from "../../../store/hooks/useAuth";
+import { useTransactions } from "../../../store/hooks/useTransactions";
 import { CategoryCollection } from "../../../enum/categoryCollection";
 
 interface TransferProps {
@@ -46,7 +47,8 @@ export default function TransferScreen({
   transactionData,
 }: TransferProps) {
   const [loadingTransaction, setLoadingTransaction] = useState(false);
-  const userContext = useContext(UserContext);
+  const { user } = useAuth();
+  const { addTransaction } = useTransactions();
   const { control, handleSubmit, reset, setValue } = useForm<ITransferForm>({
     defaultValues: {
       categoria: "",
@@ -102,7 +104,7 @@ export default function TransferScreen({
   const { showSnackBar, visible, message, type, hideSnackBar } = useSnackBar();
 
   const onSubmit = async (data: ITransferForm) => {
-    const currentUser = userContext?.user;
+    const currentUser = user;
 
     try {
       setLoadingTransaction(true);

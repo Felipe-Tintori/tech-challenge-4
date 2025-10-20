@@ -11,14 +11,11 @@ import BytebankInput from "../../../shared/components/input";
 import BytebankButton from "../../../shared/components/button";
 import styles from "./styles";
 import { globalStyles, colors, spacing } from "../../../styles/globalSltyles";
-import { auth } from "../../../services/firebaseConfig";
-import { signInWithEmailAndPassword } from "firebase/auth";
 import BytebankSnackbar from "../../../shared/components/snackBar";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { AsyncStorageKeys } from "../../../enum/asyncStorage";
 import { typeSnackbar } from "../../../enum/snackBar";
 import { useSnackBar } from "../../../shared/hooks/useSnackBar";
 import { useNavigator } from "../../../shared/hooks/useNavigator";
+import { useAuth } from "../../../store/hooks/useAuth";
 
 const { height } = Dimensions.get("window");
 
@@ -37,7 +34,15 @@ export default function LoginScreen() {
 
   const { navigation } = useNavigator();
   const { visible, message, type, showSnackBar, hideSnackBar } = useSnackBar();
+  const { login, isLoading, error } = useAuth();
   const [showForm, setShowForm] = useState(false);
+
+  // Mostrar erro se houver
+  useEffect(() => {
+    if (error) {
+      showSnackBar(error, typeSnackbar.ERROR);
+    }
+  }, [error, showSnackBar]);
 
   const logoTranslateY = useSharedValue(0);
   const logoScale = useSharedValue(1);
@@ -78,14 +83,12 @@ export default function LoginScreen() {
 
   const onSubmit = async (data: IForm) => {
     try {
-      const userCredential = await signInWithEmailAndPassword(
-        auth,
-        data.email,
-        data.senha
-      );
-      const token = await userCredential.user.getIdToken();
-      await AsyncStorage.setItem(AsyncStorageKeys.FIREBASE_TOKEN, token);
-      navigation.navigate("Home");
+      const result = await login(data.email, data.senha);
+      if (result.meta.requestStatus === 'fulfilled') {
+        navigation.navigate("Home");
+      } else {
+        showSnackBar(result.payload as string || "Erro ao fazer login.", typeSnackbar.ERROR);
+      }
     } catch (error: any) {
       showSnackBar(error.message || "Erro ao logar.", typeSnackbar.ERROR);
     }
@@ -142,8 +145,8 @@ export default function LoginScreen() {
                 Não tem conta? Cadastre-se
               </Text>
             </TouchableOpacity>
-            <BytebankButton onPress={handleSubmit(onSubmit)}>
-              Entrar
+            <BytebankButton onPress={handleSubmit(onSubmit)} disabled={isLoading}>
+              {isLoading ? "Entrando..." : "Entrar"}
             </BytebankButton>
           </View>
         </Animated.View>

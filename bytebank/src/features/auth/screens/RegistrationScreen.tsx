@@ -11,18 +11,13 @@ import BytebankInput from "../../../shared/components/input";
 import BytebankButton from "../../../shared/components/button";
 import styles from "./styles";
 import { colors, globalStyles } from "../../../styles/globalSltyles";
-
-import { auth } from "../../../services/firebaseConfig";
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  updateProfile,
-} from "firebase/auth";
 import BytebankSnackbar from "../../../shared/components/snackBar";
 import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { Routes } from "../../../interface/routes";
 import BytebankLoading from "../../../shared/components/loading";
+import { useAuth } from "../../../store/hooks/useAuth";
+import { typeSnackbar } from "../../../enum/snackBar";
 
 interface IForm {
   email: string;
@@ -39,9 +34,8 @@ export default function RegistrationScreen() {
     },
   });
 
-  const [loading, setLoading] = useState(false);
-
   const navigation = useNavigation<NativeStackNavigationProp<Routes>>();
+  const { register, isLoading, error } = useAuth();
 
   const [snackbarVisible, setSnackbarVisible] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState("");
@@ -50,6 +44,13 @@ export default function RegistrationScreen() {
     setSnackbarMessage(message);
     setSnackbarVisible(true);
   };
+
+  // Mostrar erro se houver
+  useEffect(() => {
+    if (error) {
+      showSnackbar(error);
+    }
+  }, [error]);
 
   const logoTranslateY = useSharedValue(-100);
   const formTranslateY = useSharedValue(100);
@@ -74,19 +75,15 @@ export default function RegistrationScreen() {
   }));
 
   const onSubmit = async (data: IForm) => {
-    setLoading(true);
     try {
-      const userCredential = await createUserWithEmailAndPassword(
-        auth,
-        data.email,
-        data.senha
-      );
-      await updateProfile(userCredential.user, { displayName: data.name });
-      navigation.navigate("Home");
+      const result = await register(data.email, data.senha, data.name);
+      if (result.meta.requestStatus === 'fulfilled') {
+        navigation.navigate("Home");
+      } else {
+        showSnackbar(result.payload as string || "Erro ao cadastrar.");
+      }
     } catch (error: any) {
       showSnackbar(error.message || "Erro ao cadastrar.");
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -140,7 +137,7 @@ export default function RegistrationScreen() {
           </TouchableOpacity>
         </View>
       </Animated.View>
-      <BytebankLoading visible={loading} message="Registrando usuário..." />
+      <BytebankLoading visible={isLoading} message="Registrando usuário..." />
     </View>
   );
 }

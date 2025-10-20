@@ -1,12 +1,12 @@
-import React, { useContext } from "react";
+import React from "react";
 import { styles } from "./styles";
 import { Text, View } from "react-native";
-import { UserContext } from "../../../auth";
-import { useTransactions } from "../../../transactions";
+import { useAuth } from "../../../../store/hooks/useAuth";
+import { useTransactions } from "../../../../store/hooks/useTransactions";
 
 export default function Balance() {
-  const { transactions } = useTransactions();
-  const userContext = useContext(UserContext);
+  const { allTransactions } = useTransactions();
+  const { user } = useAuth();
   const formatCurrentDate = (): string => {
     const today = new Date();
 
@@ -32,7 +32,7 @@ export default function Balance() {
   };
 
   const calculateTotalBalance = (): string => {
-    const total = transactions.reduce((total, transaction) => {
+    const total = allTransactions.reduce((total: number, transaction: any) => {
       return transaction.category === "Saque"
         ? total - transaction.value
         : total + transaction.value;
@@ -49,7 +49,7 @@ export default function Balance() {
     <View style={styles.container}>
       <View>
         <Text style={styles.headerTitle}>
-          Bem-vindo(a), {userContext?.user?.name}!
+          Bem-vindo(a), {user?.name}!
         </Text>
         <Text style={styles.headerSubTitle}>{formatCurrentDate()}</Text>
       </View>

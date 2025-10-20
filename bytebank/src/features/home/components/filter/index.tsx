@@ -1,4 +1,4 @@
-import React, { useContext } from "react";
+import React from "react";
 import { View, ScrollView } from "react-native";
 import { useForm } from "react-hook-form";
 import { Button, IconButton } from "react-native-paper";
@@ -12,7 +12,6 @@ import BytebankDatePicker from "../../../../shared/components/datePicker";
 import { db } from "../../../../services/firebaseConfig";
 import { IFirebaseCollection } from "../../../../enum/firebaseCollection";
 import { ITransaction } from "../../../../interface/transaction";
-import { UserContext } from "@features/auth";
 import { useCategories, usePaymentMethods } from "@shared/index";
 
 interface IFilterForm {
@@ -22,11 +21,12 @@ interface IFilterForm {
 
 interface FilterProps {
   onClose?: () => void; // Callback para fechar o Drawer
-  onFilter: (filteredTransactions: ITransaction[]) => void; // Callback para retornar os resultados filtrados
+  onFilter: (filterCriteria: any) => void; // Callback para retornar critérios de filtro
+  user?: any; // User passado como prop para evitar Redux context no Portal
 }
 
-export default function Filter({ onClose, onFilter }: FilterProps) {
-  const userContext = useContext(UserContext);
+export default function Filter({ onClose, onFilter, user }: FilterProps) {
+  // Removemos o useAuth() já que user é passado como prop
   const { control, handleSubmit, reset } = useForm<IFilterForm>({
     defaultValues: {
       categoria: "",
@@ -49,36 +49,29 @@ export default function Filter({ onClose, onFilter }: FilterProps) {
 
   const onSubmit = async (data: IFilterForm) => {
     try {
-      const currentUser = userContext?.user;
-      const transactionsRef = collection(db, IFirebaseCollection.TRANSACTION);
-      let filters = [];
-
-      const currentUserId = currentUser?._id;
-
-      filters.push(where("userId", "==", currentUserId));
+      // Em vez de fazer query no Firebase, passamos os critérios para o Redux
+      const filterCriteria: any = {};
 
       if (data.categoria) {
-        filters.push(where("categoryId", "==", data.categoria));
+        // Encontrar a categoria selecionada
+        const selectedCategory = categories.find(cat => cat.id === data.categoria);
+        filterCriteria.category = selectedCategory?.label;
       }
+      
       if (data.metodoPagamento) {
-        filters.push(where("paymentId", "==", data.metodoPagamento));
+        // Encontrar o método de pagamento selecionado  
+        const selectedPayment = paymentMethods.find(method => method.id === data.metodoPagamento);
+        filterCriteria.paymentMethod = selectedPayment?.label;
       }
 
-      const q = query(transactionsRef, ...filters);
-      const querySnapshot = await getDocs(q);
-      console.log("Query executada com filtros:", q);
-
-      const filteredTransactions = querySnapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as ITransaction[];
-
-      onFilter(filteredTransactions);
+      console.log("Aplicando critérios de filtro:", filterCriteria);
+      
+      onFilter(filterCriteria);
       if (onClose) {
         onClose();
       }
     } catch (error) {
-      console.error("Erro ao filtrar transações:", error);
+      console.error("Erro ao aplicar filtros:", error);
     }
   };
 

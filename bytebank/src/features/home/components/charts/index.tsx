@@ -3,7 +3,7 @@ import { View, Dimensions } from "react-native";
 import { Text } from "react-native-paper";
 import { BarChart } from "react-native-chart-kit";
 import { styles } from "../balance/styles";
-import { useTransactions } from "../../../transactions";
+import { useTransactions } from "../../../../store/hooks/useTransactions";
 import { ITransaction } from "../../../../interface/transaction";
 import { colors } from "../../../../styles/globalSltyles";
 import { CategoryCollection } from "../../../../enum/categoryCollection";
@@ -28,8 +28,14 @@ const getMonthLabel = (date: Date | string) => {
   return `${months[d.getMonth()]}/${d.getFullYear()}`;
 };
 
-const getMonthData = (transactions: ITransaction[]) => {
+const getMonthData = (transactions: ITransaction[] = []) => {
   const data: { [key: string]: number } = {};
+  
+  // Verificação de segurança
+  if (!Array.isArray(transactions)) {
+    return data;
+  }
+  
   transactions.forEach((t) => {
     const monthLabel = getMonthLabel(t.dataTransaction);
     const value = typeof t.value === "number" ? t.value : 0;
@@ -41,9 +47,9 @@ const getMonthData = (transactions: ITransaction[]) => {
 };
 
 export default function Charts() {
-  const { transactions } = useTransactions();
+  const { allTransactions } = useTransactions();
 
-  const monthData = getMonthData(transactions);
+  const monthData = getMonthData(allTransactions || []);
 
   const labels = Object.keys(monthData);
   const values = Object.values(monthData);

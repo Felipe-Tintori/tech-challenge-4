@@ -8,17 +8,18 @@ import {
   StyleSheet,
 } from "react-native";
 import { Text, IconButton, Menu, Divider, Portal } from "react-native-paper";
-import { useTransactions, TransferScreen } from "../../../transactions";
+import { useTransactions } from "../../../../store/hooks/useTransactions";
 import { ITransaction } from "../../../../interface/transaction";
 import BytebankLoading from "../../../../shared/components/loading";
 import { styles } from "./styles";
 import DeleteModal from "./components/deleteModal";
+import EditModal from "./components/editModal";
 import { CategoryCollection } from "../../../../enum/categoryCollection";
 import Filter from "../filter";
 import { FilterButton } from "./components/filterButton";
 
 export default function Extract() {
-  const { transactions, loading, error, setTransactions } = useTransactions();
+  const { allTransactions, filteredTransactions, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
   const [transactionToDelete, setTransactionToDelete] =
     useState<ITransaction | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -29,7 +30,13 @@ export default function Extract() {
 
   const itemsPerPage = 4;
 
-  const totalPages = Math.ceil(transactions.length / itemsPerPage);
+  // Determina quais transações usar baseado se há filtros ativos
+  const activeTransactions = useMemo(() => {
+    const hasActiveFilters = filters && Object.keys(filters).length > 0;
+    return hasActiveFilters ? filteredTransactions : allTransactions;
+  }, [filters, filteredTransactions, allTransactions]);
+
+  const totalPages = Math.ceil((activeTransactions || []).length / itemsPerPage);
   const startIndex = currentPage * itemsPerPage;
   const endIndex = startIndex + itemsPerPage;
   const [editModalVisible, setEditModalVisible] = useState(false);
@@ -37,8 +44,8 @@ export default function Extract() {
     useState<ITransaction | null>(null);
 
   const currentTransactions = useMemo(() => {
-    return transactions.slice(startIndex, endIndex);
-  }, [transactions, startIndex, endIndex]);
+    return (activeTransactions || []).slice(startIndex, endIndex);
+  }, [activeTransactions, startIndex, endIndex]);
 
   const formatDate = (date: Date | string): string => {
     const dateObj = typeof date === "string" ? new Date(date) : date;
@@ -110,6 +117,18 @@ export default function Extract() {
     setTransactionToEdit(null);
   };
 
+  // Função para salvar edição
+  const handleSaveEdit = async (updatedTransaction: Partial<ITransaction>) => {
+    try {
+      await editTransaction(updatedTransaction);
+      setEditModalVisible(false);
+      setTransactionToEdit(null);
+      console.log("Transação editada com sucesso");
+    } catch (error) {
+      console.error("Erro ao editar transação:", error);
+    }
+  };
+
   const handleDelete = (transaction: ITransaction) => {
     const transactionId = transaction?.id;
     if (!transactionId) {
@@ -129,10 +148,11 @@ export default function Extract() {
   };
 
   useEffect(() => {
-    if (transactions) {
-      console.log("Transações atualizadas:", transactions);
+    if (activeTransactions) {
+      console.log("Transações ativas atualizadas:", activeTransactions);
+      console.log("Filtros ativos:", filters);
     }
-  }, [transactions]);
+  }, [activeTransactions, filters]);
 
   const renderTransactionItem = ({
     item,
@@ -214,7 +234,7 @@ export default function Extract() {
   );
 
   const renderPagination = () => {
-    if (transactions.length <= itemsPerPage) return null;
+    if ((activeTransactions || []).length <= itemsPerPage) return null;
 
     return (
       <View style={styles.paginationContainer}>
@@ -252,29 +272,16 @@ export default function Extract() {
   if (editModalVisible && transactionToEdit) {
     return (
       <Portal>
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              zIndex: 99999999,
-            },
-          ]}
-        >
-          <TransferScreen
-            onClose={handleCloseEdit}
-            editMode={true}
-            transactionData={transactionToEdit}
-          />
-        </View>
+        <EditModal 
+          transaction={transactionToEdit}
+          onClose={handleCloseEdit}
+          onSave={handleSaveEdit}
+        />
       </Portal>
     );
   }
 
-  if (loading) {
+  if (isLoading) {
     return <BytebankLoading visible={true} message="Carregando extrato..." />;
   }
 

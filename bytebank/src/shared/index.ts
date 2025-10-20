@@ -16,3 +16,15 @@ export { useSnackBar } from './hooks/useSnackBar';
 export { useNavigator } from './hooks/useNavigator';
 export { useCategories } from './hooks/useCategories';
 export { usePaymentMethods } from './hooks/usePaymentMethods';
+
+// Advanced state management hooks
+export { useFirebaseAuthSync, useTransactionAutoRefresh, useOptimisticTransaction } from './hooks/useAdvancedState';
+export { useSmartCache, useBackgroundSync } from './hooks/useSmartCache';
+export { 
+  useVirtualization, 
+  useDebounce, 
+  useThrottle, 
+  useOptimizedPagination, 
+  useIntersectionObserver,
+  useMemoryOptimization 
+} from './hooks/usePerformance';
