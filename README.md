@@ -1,6 +1,30 @@
-# Bytebank - Tech Challenge 3
+# Bytebank - Tech Challenge 4
 
-Este é o projeto **Bytebank**, desenvolvido como parte do **Tech Challenge 3** da FIAP. O objetivo do projeto é criar uma aplicação para gerenciar transações financeiras, com funcionalidades como filtros, exibição de extratos e integração com o Firebase.
+Este é o projeto **Bytebank**, desenvolvido como parte do **Tech Challenge 4** da FIAP. O projeto foi inicialmente criado no Tech Challenge 3 para gerenciar transações financeiras, com funcionalidades como filtros, exibição de extratos e integração com o Firebase.
+
+## 🏗️ Arquitetura Modular (Tech Challenge 4)
+
+A partir do **Tech Challenge 4**, o projeto foi refatorado para implementar uma **arquitetura modular baseada em features**, promovendo:
+
+- **✅ Melhor Organização**: Código agrupado por funcionalidade
+- **✅ Manutenibilidade**: Mudanças isoladas por módulo  
+- **✅ Escalabilidade**: Fácil adição de novas features
+- **✅ Reutilização**: Componentes compartilhados
+- **✅ Testabilidade**: Módulos independentes
+
+### Estrutura Modular:
+```
+src/
+├── features/           # Módulos por funcionalidade
+│   ├── auth/          # Login, Registro, UserContext
+│   ├── transactions/   # Transferências, TransactionContext
+│   └── home/          # Dashboard, Gráficos, Extrato
+├── shared/            # Componentes reutilizáveis
+├── interface/         # Tipos globais
+└── services/          # Firebase e APIs
+```
+
+Para mais detalhes sobre a arquitetura modular, consulte [`src/README.md`](./bytebank/src/README.md).
 
 ## 🛠️ Tecnologias Utilizadas
 
