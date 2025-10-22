@@ -66,10 +66,30 @@ export default function EditModal({
     value: method.id,
   }));
 
+  // Debug logs para verificar as opções disponíveis
+  useEffect(() => {
+    if (categories.length > 0) {
+      console.log("DEBUG EditModal: Categorias disponíveis:", categories);
+      console.log("DEBUG EditModal: Opções de categoria:", categoriaOptions);
+    }
+  }, [categories]);
+
+  useEffect(() => {
+    if (paymentMethods.length > 0) {
+      console.log("DEBUG EditModal: Métodos de pagamento disponíveis:", paymentMethods);
+      console.log("DEBUG EditModal: Opções de método de pagamento:", metodoPagamentoOptions);
+    }
+  }, [paymentMethods]);
+
   // Preencher valores iniciais baseados na transação
   useEffect(() => {
     if (transaction) {
-      console.log("Preenchendo dados para edição:", transaction);
+      console.log("DEBUG EditModal: Preenchendo dados para edição:", transaction);
+      console.log("DEBUG EditModal: comprovanteURL da transação:", transaction.comprovanteURL);
+      console.log("DEBUG EditModal: categoryId:", transaction.categoryId);
+      console.log("DEBUG EditModal: paymentId:", transaction.paymentId);
+      console.log("DEBUG EditModal: category:", transaction.category);
+      console.log("DEBUG EditModal: payment:", transaction.payment);
 
       const formattedValue = transaction.value.toLocaleString("pt-BR", {
         style: "currency",
@@ -84,11 +104,18 @@ export default function EditModal({
       setValue("dataTransferencia", transaction.dataTransaction);
 
       if (transaction.comprovanteURL) {
+        console.log("DEBUG EditModal: Definindo comprovante existente:", {
+          uri: transaction.comprovanteURL,
+          name: "Comprovante existente",
+          isExisting: true,
+        });
         setValue("comprovante", {
           uri: transaction.comprovanteURL,
           name: "Comprovante existente",
           isExisting: true,
         });
+      } else {
+        console.log("DEBUG EditModal: Nenhum comprovante encontrado na transação");
       }
     }
   }, [transaction, setValue]);
@@ -119,11 +146,10 @@ export default function EditModal({
 
       const updatedTransaction: Partial<ITransaction> = {
         id: transaction.id,
-        category:
-          (selectedCategory?.label as CategoryCollection) ||
-          transaction.category,
+        // CORREÇÃO: Salvar os IDs do Firebase como category e payment (não os labels)
+        category: (data.categoria as CategoryCollection) || transaction.categoryId,
         categoryId: data.categoria || transaction.categoryId,
-        payment: selectedPaymentMethod?.label || transaction.payment,
+        payment: data.metodoPagamento || transaction.paymentId,
         paymentId: data.metodoPagamento || transaction.paymentId,
         value: parseValueToNumber(data.valor),
         dataTransaction: data.dataTransferencia || transaction.dataTransaction,

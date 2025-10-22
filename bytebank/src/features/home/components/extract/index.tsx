@@ -17,9 +17,13 @@ import EditModal from "./components/editModal";
 import { CategoryCollection } from "../../../../enum/categoryCollection";
 import Filter from "../filter";
 import { FilterButton } from "./components/filterButton";
+import { useCategories } from "../../../../shared/hooks/useCategories";
+import { usePaymentMethods } from "../../../../shared/hooks/usePaymentMethods";
 
 export default function Extract() {
-  const { allTransactions, filteredTransactions, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
+  const { allTransactionsLegacy, filteredTransactionsLegacy, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
+  const { categories } = useCategories();
+  const { paymentMethods } = usePaymentMethods();
   const [transactionToDelete, setTransactionToDelete] =
     useState<ITransaction | null>(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
@@ -33,8 +37,8 @@ export default function Extract() {
   // Determina quais transações usar baseado se há filtros ativos
   const activeTransactions = useMemo(() => {
     const hasActiveFilters = filters && Object.keys(filters).length > 0;
-    return hasActiveFilters ? filteredTransactions : allTransactions;
-  }, [filters, filteredTransactions, allTransactions]);
+    return hasActiveFilters ? filteredTransactionsLegacy : allTransactionsLegacy;
+  }, [filters, filteredTransactionsLegacy, allTransactionsLegacy]);
 
   const totalPages = Math.ceil((activeTransactions || []).length / itemsPerPage);
   const startIndex = currentPage * itemsPerPage;
@@ -76,6 +80,17 @@ export default function Extract() {
       return "↓";
     }
     return "↑";
+  };
+
+  // Funções para converter IDs para labels
+  const getCategoryLabel = (categoryId: string): string => {
+    const category = categories.find(cat => cat.id === categoryId);
+    return category?.label || categoryId;
+  };
+
+  const getPaymentMethodLabel = (paymentId: string): string => {
+    const paymentMethod = paymentMethods.find(method => method.id === paymentId);
+    return paymentMethod?.label || paymentId;
   };
 
   const handleNextPage = () => {
@@ -120,7 +135,24 @@ export default function Extract() {
   // Função para salvar edição
   const handleSaveEdit = async (updatedTransaction: Partial<ITransaction>) => {
     try {
-      await editTransaction(updatedTransaction);
+      if (!updatedTransaction.id) {
+        console.error("ID da transação não encontrado");
+        return;
+      }
+      
+      // Separar o ID dos dados de atualização e mapear para o formato correto
+      const { id, category, payment, value, dataTransaction, comprovanteURL, status } = updatedTransaction;
+      
+      const updateData: any = {};
+      
+      if (value !== undefined) updateData.value = value;
+      if (dataTransaction !== undefined) updateData.date = new Date(dataTransaction);
+      if (comprovanteURL !== undefined && comprovanteURL !== null) updateData.receiptUrl = comprovanteURL;
+      if (status !== undefined) updateData.status = status;
+      if (category !== undefined) updateData.category = category;
+      if (payment !== undefined) updateData.paymentMethod = payment;
+      
+      await editTransaction(id, updateData);
       setEditModalVisible(false);
       setTransactionToEdit(null);
       console.log("Transação editada com sucesso");
@@ -167,12 +199,12 @@ export default function Extract() {
       <TouchableOpacity style={styles.transactionItem}>
         <View style={styles.iconContainer}>
           <Text style={styles.transactionIcon}>
-            {getTransactionIcon(item.category)}
+            {getTransactionIcon(getCategoryLabel(item.category))}
           </Text>
         </View>
 
         <View style={styles.transactionInfo}>
-          <Text style={styles.paymentMethod}>{item.payment}</Text>
+          <Text style={styles.paymentMethod}>{getPaymentMethodLabel(item.payment)}</Text>
           <Text style={styles.transactionDateTime}>
             {formatDate(item.dataTransaction)}
           </Text>

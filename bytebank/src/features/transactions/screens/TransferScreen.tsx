@@ -69,6 +69,10 @@ export default function TransferScreen({
   useEffect(() => {
     if (editMode && transactionData) {
       console.log("Preenchendo dados para edição:", transactionData);
+      console.log("DEBUG edição - categoryId:", transactionData.categoryId);
+      console.log("DEBUG edição - paymentId:", transactionData.paymentId);
+      console.log("DEBUG edição - category:", transactionData.category);
+      console.log("DEBUG edição - payment:", transactionData.payment);
 
       const formattedValue = transactionData.value.toLocaleString("pt-BR", {
         style: "currency",
@@ -101,6 +105,21 @@ export default function TransferScreen({
     value: method.id,
   }));
 
+  // Debug logs para verificar as opções disponíveis
+  useEffect(() => {
+    if (categories.length > 0) {
+      console.log("DEBUG - Categorias disponíveis:", categories);
+      console.log("DEBUG - Opções de categoria:", categoriaOptions);
+    }
+  }, [categories]);
+
+  useEffect(() => {
+    if (paymentMethods.length > 0) {
+      console.log("DEBUG - Métodos de pagamento disponíveis:", paymentMethods);
+      console.log("DEBUG - Opções de método de pagamento:", metodoPagamentoOptions);
+    }
+  }, [paymentMethods]);
+
   const { showSnackBar, visible, message, type, hideSnackBar } = useSnackBar();
 
   const onSubmit = async (data: ITransferForm) => {
@@ -117,9 +136,10 @@ export default function TransferScreen({
       let comprovanteURL = null;
 
       // Upload do comprovante (se houver)
-      if (data.comprovante) {
+      if (data.comprovante && !data.comprovante.isExisting) {
         try {
           const file = data.comprovante;
+          
           const fileName = `${IFirebaseStorage.COMPROVANTES}/${Date.now()}_${
             file.name
           }`;
@@ -128,9 +148,10 @@ export default function TransferScreen({
           const response = await fetch(file.uri);
           const blob = await response.blob();
 
-          console.log("Fazendo upload...");
+          console.log("DEBUG TransferScreen: Fazendo upload para Firebase Storage...");
           const snapshot = await uploadBytes(storageRef, blob);
           comprovanteURL = await getDownloadURL(snapshot.ref);
+          console.log('DEBUG TransferScreen: Upload concluído, URL:', comprovanteURL);
         } catch (uploadError) {
           console.error("Erro no upload:", uploadError);
           showSnackBar("Erro ao fazer upload do arquivo", typeSnackbar.ERROR);
@@ -163,17 +184,19 @@ export default function TransferScreen({
       };
 
       const transactionDataToSave: Partial<ITransaction> = {
-        userId: currentUser?._id,
-        category:
-          (selectedCategory?.label as CategoryCollection) || data.categoria,
+        userId: currentUser?.id || currentUser?._id,
+        // CORREÇÃO: Salvar os IDs do Firebase como category e payment (não os labels)
+        category: (data.categoria as CategoryCollection) || data.categoria,
         categoryId: data.categoria,
-        payment: selectedPaymentMethod?.label || data.metodoPagamento,
+        payment: data.metodoPagamento || data.metodoPagamento,
         paymentId: data.metodoPagamento,
         value: parseValueToNumber(data.valor),
         dataTransaction: data.dataTransferencia || new Date().toISOString(),
         comprovanteURL: comprovanteURL,
         status: "realizada",
       };
+
+      console.log('DEBUG TransferScreen: transactionDataToSave:', transactionDataToSave);
 
       if (editMode && transactionData?.id) {
         // ATUALIZAR transação existente

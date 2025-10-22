@@ -4,13 +4,15 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import { LoginScreen, RegistrationScreen } from "../features/auth";
 import { HomeScreen } from "../features/home";
 import { useAuth } from "../store/hooks/useAuth";
+import { useTransactions } from "../store/hooks/useTransactions";
 import { useFirebaseAuthSync } from "../shared/hooks/useAdvancedState";
 import { useFirebaseTransactionSync } from "../shared/hooks/useFirebaseTransactionSync";
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, loadUser } = useAuth();
+  const { isAuthenticated, loadUser, user } = useAuth();
+  const { loadTransactions } = useTransactions();
   
   // Sincroniza automaticamente com Firebase
   useFirebaseAuthSync();
@@ -22,6 +24,14 @@ export default function AppNavigator() {
   useEffect(() => {
     loadUser();
   }, [loadUser]);
+
+  // Carrega transações quando o usuário está autenticado
+  useEffect(() => {
+    if (isAuthenticated && user?._id) {
+      console.log('Carregando transações para usuário:', user._id);
+      loadTransactions(user._id);
+    }
+  }, [isAuthenticated, user?._id, loadTransactions]);
 
   return (
     <NavigationContainer>

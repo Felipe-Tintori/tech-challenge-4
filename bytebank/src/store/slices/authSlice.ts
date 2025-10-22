@@ -1,14 +1,20 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from 'firebase/auth';
-import { auth } from '../../services/firebaseConfig';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { AsyncStorageKeys } from '../../enum/asyncStorage';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { 
+  loginUserAsync, 
+  registerUserAsync, 
+  logoutUserAsync, 
+  loadUserAsync,
+  checkAuthStatusAsync
+} from '../../presentation/adapters/authThunks';
 
-// Types
+// Types baseados na entidade de domínio
 interface User {
-  _id: string;
-  email: string;
+  id: string;
   name: string;
+  email: string;
+  profileImage?: string;
+  createdAt: string; // ISO string para serialização
+  updatedAt: string; // ISO string para serialização
 }
 
 interface AuthState {
@@ -17,99 +23,8 @@ interface AuthState {
   isAuthenticated: boolean;
   error: string | null;
   token: string | null;
+  isInitialized: boolean;
 }
-
-interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-interface RegisterCredentials {
-  email: string;
-  password: string;
-  name: string;
-}
-
-// Async Thunks
-export const loginUser = createAsyncThunk(
-  'auth/loginUser',
-  async ({ email, password }: LoginCredentials, { rejectWithValue }) => {
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const token = await userCredential.user.getIdToken();
-      await AsyncStorage.setItem(AsyncStorageKeys.FIREBASE_TOKEN, token);
-      
-      return {
-        user: {
-          _id: userCredential.user.uid,
-          email: userCredential.user.email!,
-          name: userCredential.user.displayName || '',
-        },
-        token,
-      };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const registerUser = createAsyncThunk(
-  'auth/registerUser',
-  async ({ email, password, name }: RegisterCredentials, { rejectWithValue }) => {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      await updateProfile(userCredential.user, { displayName: name });
-      const token = await userCredential.user.getIdToken();
-      await AsyncStorage.setItem(AsyncStorageKeys.FIREBASE_TOKEN, token);
-      
-      return {
-        user: {
-          _id: userCredential.user.uid,
-          email: userCredential.user.email!,
-          name: name,
-        },
-        token,
-      };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const logoutUser = createAsyncThunk(
-  'auth/logoutUser',
-  async (_, { rejectWithValue }) => {
-    try {
-      await signOut(auth);
-      await AsyncStorage.removeItem(AsyncStorageKeys.FIREBASE_TOKEN);
-      return null;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const loadUserFromStorage = createAsyncThunk(
-  'auth/loadUserFromStorage',
-  async (_, { rejectWithValue }) => {
-    try {
-      const token = await AsyncStorage.getItem(AsyncStorageKeys.FIREBASE_TOKEN);
-      if (token && auth.currentUser) {
-        return {
-          user: {
-            _id: auth.currentUser.uid,
-            email: auth.currentUser.email!,
-            name: auth.currentUser.displayName || '',
-          },
-          token,
-        };
-      }
-      return null;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
 
 // Initial State
 const initialState: AuthState = {
@@ -118,6 +33,7 @@ const initialState: AuthState = {
   isAuthenticated: false,
   error: null,
   token: null,
+  isInitialized: false,
 };
 
 // Auth Slice
@@ -131,84 +47,116 @@ const authSlice = createSlice({
     setUser: (state, action: PayloadAction<User | null>) => {
       state.user = action.payload;
       state.isAuthenticated = !!action.payload;
+      // Se o usuário foi removido, limpar também o token
+      if (!action.payload) {
+        state.token = null;
+      }
     },
     resetAuthState: () => initialState,
+    setInitialized: (state) => {
+      state.isInitialized = true;
+    },
+    clearAuthState: (state) => {
+      state.user = null;
+      state.isAuthenticated = false;
+      state.token = null;
+      state.error = null;
+      // Manter isInitialized como true para evitar loops
+    },
   },
   extraReducers: (builder) => {
-    // Login
+    // Login com Clean Architecture
     builder
-      .addCase(loginUser.pending, (state) => {
+      .addCase(loginUserAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(loginUser.fulfilled, (state, action) => {
+      .addCase(loginUserAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.user = action.payload;
         state.isAuthenticated = true;
         state.error = null;
+        state.isInitialized = true;
       })
-      .addCase(loginUser.rejected, (state, action) => {
+      .addCase(loginUserAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
         state.isAuthenticated = false;
+        state.user = null;
       });
 
-    // Register
+    // Register com Clean Architecture
     builder
-      .addCase(registerUser.pending, (state) => {
+      .addCase(registerUserAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(registerUser.fulfilled, (state, action) => {
+      .addCase(registerUserAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.user = action.payload.user;
-        state.token = action.payload.token;
+        state.user = action.payload;
         state.isAuthenticated = true;
         state.error = null;
+        state.isInitialized = true;
       })
-      .addCase(registerUser.rejected, (state, action) => {
+      .addCase(registerUserAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
         state.isAuthenticated = false;
+        state.user = null;
       });
 
-    // Logout
+    // Logout com Clean Architecture
     builder
-      .addCase(logoutUser.pending, (state) => {
+      .addCase(logoutUserAsync.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(logoutUser.fulfilled, (state) => {
+      .addCase(logoutUserAsync.fulfilled, (state) => {
         state.isLoading = false;
         state.user = null;
-        state.token = null;
         state.isAuthenticated = false;
         state.error = null;
+        state.token = null;
       })
-      .addCase(logoutUser.rejected, (state, action) => {
+      .addCase(logoutUserAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
 
-    // Load from storage
+    // Load user com Clean Architecture
     builder
-      .addCase(loadUserFromStorage.pending, (state) => {
+      .addCase(loadUserAsync.pending, (state) => {
         state.isLoading = true;
       })
-      .addCase(loadUserFromStorage.fulfilled, (state, action) => {
+      .addCase(loadUserAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        if (action.payload) {
-          state.user = action.payload.user;
-          state.token = action.payload.token;
-          state.isAuthenticated = true;
-        }
+        state.user = action.payload;
+        state.isAuthenticated = !!action.payload;
+        state.isInitialized = true;
       })
-      .addCase(loadUserFromStorage.rejected, (state, action) => {
+      .addCase(loadUserAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
+        state.isInitialized = true;
+      });
+
+    // Check auth status com Clean Architecture
+    builder
+      .addCase(checkAuthStatusAsync.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(checkAuthStatusAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.user = action.payload;
+        state.isAuthenticated = !!action.payload;
+        state.isInitialized = true;
+      })
+      .addCase(checkAuthStatusAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+        state.isInitialized = true;
       });
   },
 });
 
-export const { clearError, setUser, resetAuthState } = authSlice.actions;
+export const { clearError, setUser, resetAuthState, setInitialized, clearAuthState } = authSlice.actions;
 export default authSlice.reducer;

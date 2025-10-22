@@ -1,69 +1,189 @@
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
+import { createSelector } from '@reduxjs/toolkit';
 import { useAppDispatch, useAppSelector } from './index';
 import {
-  fetchTransactions,
-  createTransaction,
-  updateTransaction,
-  deleteTransaction,
   clearError,
   setFilters,
   clearFilters,
   setCurrentPage,
   setItemsPerPage,
-  resetTransactionState
+  setCurrentTransaction,
+  resetTransactionState,
+  setSubscriptionStatus
 } from '../slices/transactionSlice';
 import {
-  selectAllTransactions,
-  selectFilteredTransactions,
-  selectPaginatedTransactions,
-  selectTransactionLoading,
-  selectTransactionError,
-  selectTransactionFilters,
-  selectTransactionStatistics,
-  selectTransactionPagination,
-  selectTransactionsByCategory,
-  selectRecentTransactions,
-  selectMonthlyTransactionData
-} from '../selectors';
+  createTransactionAsync,
+  updateTransactionAsync,
+  deleteTransactionAsync,
+  fetchTransactionsAsync,
+  fetchTransactionsByFiltersAsync,
+  fetchTransactionByIdAsync,
+  fetchTransactionStatisticsAsync,
+  subscribeToTransactionsAsync,
+  uploadReceiptAsync,
+  removeReceiptAsync
+} from '../../presentation/adapters/transactionThunks';
+import { 
+  CreateTransactionData, 
+  UpdateTransactionData, 
+  TransactionFilters as DomainTransactionFilters 
+} from '../../domain/entities/Transaction';
+import { transactionsToLegacy } from '../../shared/adapters/transactionAdapter';
+import { RootState } from '../store';
+
+// Tipo de filtros para o hook (compatível com Redux)
+type HookTransactionFilters = {
+  category?: string;
+  paymentMethod?: string;
+  status?: string;
+  startDate?: string;
+  endDate?: string;
+  minValue?: number;
+  maxValue?: number;
+};
+
+// Selectors memoizados para evitar re-renders
+const selectTransactionState = (state: RootState) => state.transactions;
+
+const selectAllTransactions = createSelector(
+  [selectTransactionState],
+  (transactionState) => transactionState.transactions
+);
+
+const selectFilteredTransactions = createSelector(
+  [selectTransactionState],
+  (transactionState) => transactionState.filteredTransactions
+);
+
+const selectPaginatedTransactions = createSelector(
+  [selectTransactionState],
+  (transactionState) => {
+    const { currentPage, itemsPerPage } = transactionState.pagination;
+    const startIndex = currentPage * itemsPerPage;
+    const endIndex = startIndex + itemsPerPage;
+    return transactionState.filteredTransactions.slice(startIndex, endIndex);
+  }
+);
+
+const selectTransactionsByCategory = createSelector(
+  [selectAllTransactions],
+  (transactions) => {
+    const categoryMap: { [key: string]: typeof transactions } = {};
+    
+    transactions.forEach(transaction => {
+      if (!categoryMap[transaction.category]) {
+        categoryMap[transaction.category] = [];
+      }
+      categoryMap[transaction.category].push(transaction);
+    });
+    
+    return categoryMap;
+  }
+);
+
+const selectRecentTransactions = createSelector(
+  [selectAllTransactions],
+  (transactions) => transactions.slice(0, 5)
+);
+
+const selectAllTransactionsLegacy = createSelector(
+  [selectAllTransactions],
+  (transactions) => transactions.map(t => ({
+    id: t.id,
+    userId: t.userId,
+    category: t.category as any,
+    categoryId: t.category,
+    payment: t.paymentMethod,
+    paymentId: t.paymentMethod,
+    value: t.value,
+    dataTransaction: t.date,
+    comprovanteURL: t.receiptUrl || (t as any).comprovanteURL, // Compatibilidade com ambos os campos
+    createdAt: new Date(t.createdAt),
+    status: t.status,
+  }))
+);
+
+const selectFilteredTransactionsLegacy = createSelector(
+  [selectFilteredTransactions],
+  (transactions) => transactions.map(t => ({
+    id: t.id,
+    userId: t.userId,
+    category: t.category as any,
+    categoryId: t.category,
+    payment: t.paymentMethod,
+    paymentId: t.paymentMethod,
+    value: t.value,
+    dataTransaction: t.date,
+    comprovanteURL: t.receiptUrl || (t as any).comprovanteURL, // Compatibilidade com ambos os campos
+    createdAt: new Date(t.createdAt),
+    status: t.status,
+  }))
+);
 
 export const useTransactions = () => {
   const dispatch = useAppDispatch();
 
-  // Selectors
+  // Selectors otimizados com memoização
   const allTransactions = useAppSelector(selectAllTransactions);
   const filteredTransactions = useAppSelector(selectFilteredTransactions);
   const paginatedTransactions = useAppSelector(selectPaginatedTransactions);
-  const isLoading = useAppSelector(selectTransactionLoading);
-  const error = useAppSelector(selectTransactionError);
-  const filters = useAppSelector(selectTransactionFilters);
-  const statistics = useAppSelector(selectTransactionStatistics);
-  const pagination = useAppSelector(selectTransactionPagination);
   const transactionsByCategory = useAppSelector(selectTransactionsByCategory);
   const recentTransactions = useAppSelector(selectRecentTransactions);
-  const monthlyData = useAppSelector(selectMonthlyTransactionData);
+  const allTransactionsLegacy = useAppSelector(selectAllTransactionsLegacy);
+  const filteredTransactionsLegacy = useAppSelector(selectFilteredTransactionsLegacy);
 
-  // Actions
+  // Selectors diretos para dados simples
+  const currentTransaction = useAppSelector(state => state.transactions.currentTransaction);
+  const isLoading = useAppSelector(state => state.transactions.isLoading);
+  const error = useAppSelector(state => state.transactions.error);
+  const filters = useAppSelector(state => state.transactions.filters);
+  const statistics = useAppSelector(state => state.transactions.statistics);
+  const pagination = useAppSelector(state => state.transactions.pagination);
+  const subscriptionActive = useAppSelector(state => state.transactions.subscriptionActive);
+
+  // Actions com Clean Architecture
   const loadTransactions = useCallback((userId: string) => {
-    return dispatch(fetchTransactions(userId));
+    return dispatch(fetchTransactionsAsync(userId));
   }, [dispatch]);
 
-  const addTransaction = useCallback((transactionData: any) => {
-    return dispatch(createTransaction(transactionData));
+  const loadTransactionsByFilters = useCallback((userId: string, filters: DomainTransactionFilters) => {
+    return dispatch(fetchTransactionsByFiltersAsync({ userId, filters }));
   }, [dispatch]);
 
-  const editTransaction = useCallback((transactionData: any) => {
-    return dispatch(updateTransaction(transactionData));
+  const loadTransactionById = useCallback((transactionId: string) => {
+    return dispatch(fetchTransactionByIdAsync(transactionId));
+  }, [dispatch]);
+
+  const addTransaction = useCallback((transactionData: CreateTransactionData) => {
+    return dispatch(createTransactionAsync(transactionData));
+  }, [dispatch]);
+
+  const editTransaction = useCallback((id: string, data: UpdateTransactionData) => {
+    return dispatch(updateTransactionAsync({ id, data }));
   }, [dispatch]);
 
   const removeTransaction = useCallback((id: string) => {
-    return dispatch(deleteTransaction(id));
+    return dispatch(deleteTransactionAsync(id));
   }, [dispatch]);
 
-  const clearTransactionError = useCallback(() => {
-    dispatch(clearError());
+  const loadStatistics = useCallback((userId: string) => {
+    return dispatch(fetchTransactionStatisticsAsync(userId));
   }, [dispatch]);
 
-  const applyFilters = useCallback((newFilters: any) => {
+  const subscribeToTransactions = useCallback((userId: string) => {
+    return dispatch(subscribeToTransactionsAsync(userId));
+  }, [dispatch]);
+
+  const uploadReceipt = useCallback((file: File | Blob, transactionId: string) => {
+    return dispatch(uploadReceiptAsync({ file, transactionId }));
+  }, [dispatch]);
+
+  const removeReceipt = useCallback((transactionId: string, receiptUrl: string) => {
+    return dispatch(removeReceiptAsync({ transactionId, receiptUrl }));
+  }, [dispatch]);
+
+  // Filter and pagination actions
+  const applyFilters = useCallback((newFilters: HookTransactionFilters) => {
     dispatch(setFilters(newFilters));
   }, [dispatch]);
 
@@ -79,15 +199,49 @@ export const useTransactions = () => {
     dispatch(setItemsPerPage(itemsPerPage));
   }, [dispatch]);
 
+  // Other actions
+  const clearTransactionError = useCallback(() => {
+    dispatch(clearError());
+  }, [dispatch]);
+
+  const selectTransaction = useCallback((transaction: any) => {
+    dispatch(setCurrentTransaction(transaction));
+  }, [dispatch]);
+
   const resetTransactions = useCallback(() => {
     dispatch(resetTransactionState());
   }, [dispatch]);
 
+  const setSubscriptionActive = useCallback((status: boolean) => {
+    dispatch(setSubscriptionStatus(status));
+  }, [dispatch]);
+
+  // Utility functions
+  const getTransactionById = useCallback((id: string) => {
+    return allTransactions.find(transaction => transaction.id === id) || null;
+  }, [allTransactions]);
+
+  const getTransactionsByDateRange = useCallback((startDate: Date, endDate: Date) => {
+    return allTransactions.filter(transaction => {
+      const transactionDate = new Date(transaction.date);
+      return transactionDate >= startDate && transactionDate <= endDate;
+    });
+  }, [allTransactions]);
+
+  const getTransactionsByCategory = useCallback((category: string) => {
+    return allTransactions.filter(transaction => transaction.category === category);
+  }, [allTransactions]);
+
+  const getTotalBalance = useCallback(() => {
+    return statistics?.totalIncome ? statistics.totalIncome - statistics.totalExpense : 0;
+  }, [statistics]);
+
   return {
-    // State
+    // State - Clean Architecture format
     allTransactions,
     filteredTransactions,
     paginatedTransactions,
+    currentTransaction,
     isLoading,
     error,
     filters,
@@ -95,18 +249,40 @@ export const useTransactions = () => {
     pagination,
     transactionsByCategory,
     recentTransactions,
-    monthlyData,
+    subscriptionActive,
+
+    // State - Legacy format (para componentes UI existentes)
+    allTransactionsLegacy,
+    filteredTransactionsLegacy,
 
     // Actions
     loadTransactions,
+    loadTransactionsByFilters,
+    loadTransactionById,
     addTransaction,
     editTransaction,
     removeTransaction,
-    clearTransactionError,
+    loadStatistics,
+    subscribeToTransactions,
+    uploadReceipt,
+    removeReceipt,
+    
+    // Filter and pagination
     applyFilters,
     removeFilters,
     changePage,
     changeItemsPerPage,
+    
+    // Other actions
+    clearTransactionError,
+    selectTransaction,
     resetTransactions,
+    setSubscriptionActive,
+
+    // Utilities
+    getTransactionById,
+    getTransactionsByDateRange,
+    getTransactionsByCategory,
+    getTotalBalance,
   };
 };

@@ -2,8 +2,8 @@ import { useEffect, useCallback, useRef } from 'react';
 import { useAppDispatch, useAppSelector } from '../../store/hooks';
 import { onAuthStateChanged } from 'firebase/auth';
 import { auth } from '../../services/firebaseConfig';
-import { setUser } from '../../store/slices/authSlice';
-import { fetchTransactions } from '../../store/slices/transactionSlice';
+import { setUser, clearAuthState } from '../../store/slices/authSlice';
+import { fetchTransactionsAsync } from '../../presentation/adapters/transactionThunks';
 import { selectUser, selectIsAuthenticated } from '../../store/selectors';
 
 /**
@@ -18,17 +18,22 @@ export const useFirebaseAuthSync = () => {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
+        console.log('useFirebaseAuthSync: Firebase user authenticated:', firebaseUser.uid);
         const userData = {
           _id: firebaseUser.uid,
+          id: firebaseUser.uid, // Compatibilidade com Clean Architecture
           email: firebaseUser.email as string,
-          name: firebaseUser.displayName as string,
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || 'Usuário',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
         };
         dispatch(setUser(userData));
         
         // Load user's transactions when authenticated
-        dispatch(fetchTransactions(firebaseUser.uid));
+        dispatch(fetchTransactionsAsync(firebaseUser.uid));
       } else {
-        dispatch(setUser(null));
+        console.log('useFirebaseAuthSync: Firebase user logged out');
+        dispatch(clearAuthState());
       }
     });
 
@@ -58,7 +63,7 @@ export const useTransactionAutoRefresh = (intervalMs: number = 30000) => {
   const startAutoRefresh = useCallback(() => {
     if (user && intervalMs > 0) {
       intervalRef.current = setInterval(() => {
-        dispatch(fetchTransactions(user._id));
+        dispatch(fetchTransactionsAsync(user._id));
       }, intervalMs);
     }
   }, [dispatch, user, intervalMs]);
@@ -95,7 +100,7 @@ export const useOptimisticTransaction = () => {
     const tempTransaction = {
       ...transactionData,
       id: `temp_${Date.now()}`,
-      createdAt: new Date(),
+      createdAt: new Date().toISOString(),
       status: 'pending'
     };
 
@@ -104,7 +109,7 @@ export const useOptimisticTransaction = () => {
       // You could create a specific action for optimistic updates
       
       // Then dispatch the real action
-      const result = await dispatch(fetchTransactions(transactionData.userId));
+      const result = await dispatch(fetchTransactionsAsync(transactionData.userId));
       
       return result;
     } catch (error) {

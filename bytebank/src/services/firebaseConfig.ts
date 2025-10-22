@@ -1,7 +1,8 @@
 import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { getAuth, initializeAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
+import { Platform } from 'react-native';
 
 const firebaseConfig = {
   apiKey: "AIzaSyD35akNF9YFhRl0E69BKWBdmEOwFWHuh6Y",
@@ -13,6 +14,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+
+// Usa auth padrão - o warning não afeta a funcionalidade
 const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);

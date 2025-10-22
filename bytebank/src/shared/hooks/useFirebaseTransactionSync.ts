@@ -11,7 +11,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../../services/firebaseConfig';
 import { IFirebaseCollection } from '../../enum/firebaseCollection';
-import { ITransaction } from '../../interface/transaction';
+import { Transaction } from '../../domain/entities/Transaction';
+import { subscriptionUpdate } from '../../store/slices/transactionSlice';
 
 /**
  * Hook personalizado para sincronização em tempo real das transações com Firebase
@@ -21,22 +22,39 @@ export const useFirebaseTransactionSync = () => {
   const dispatch = useAppDispatch();
   const { user, isAuthenticated } = useAuth();
   const unsubscribeRef = useRef<Unsubscribe | null>(null);
+  const lastUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
+    console.log('useFirebaseTransactionSync: useEffect triggered', {
+      isAuthenticated,
+      userId: user?.id || user?._id,
+      lastUserId: lastUserIdRef.current
+    });
     // Cleanup do listener anterior se existir
     if (unsubscribeRef.current) {
       unsubscribeRef.current();
       unsubscribeRef.current = null;
     }
 
-    // Se não há usuário autenticado, limpa as transações
-    if (!isAuthenticated || !user?._id) {
-      // Dispatch action para limpar transações
-      dispatch({ 
-        type: 'transactions/syncTransactions', 
-        payload: [] 
-      });
+    // Se não há usuário autenticado, limpa as transações apenas se mudou de usuário
+    const currentUserId = user?.id || user?._id;
+    if (!isAuthenticated || !currentUserId) {
+      // Só limpa se realmente houve uma mudança de estado de autenticação
+      if (lastUserIdRef.current && !currentUserId) {
+        console.log('useFirebaseTransactionSync: Limpando transações - logout detectado');
+        dispatch(subscriptionUpdate([]));
+        lastUserIdRef.current = null;
+      }
       return;
+    }
+
+    // Se é um novo usuário, atualiza a referência
+    if (lastUserIdRef.current !== currentUserId) {
+      console.log('useFirebaseTransactionSync: Mudança de usuário detectada', {
+        from: lastUserIdRef.current,
+        to: currentUserId
+      });
+      lastUserIdRef.current = currentUserId;
     }
 
     // Configura listener para mudanças em tempo real
@@ -44,45 +62,74 @@ export const useFirebaseTransactionSync = () => {
       try {
         const q = query(
           collection(db, IFirebaseCollection.TRANSACTION),
-          where("userId", "==", user._id),
+          where("userId", "==", currentUserId),
           orderBy("createdAt", "desc")
         );
 
         unsubscribeRef.current = onSnapshot(
           q,
           (querySnapshot) => {
-            const transactions: ITransaction[] = [];
+            console.log('useFirebaseTransactionSync: Firebase snapshot received', {
+              size: querySnapshot.size,
+              userId: currentUserId
+            });
+            
+            const transactions: Transaction[] = [];
 
             querySnapshot.forEach((doc) => {
-              const data = doc.data() as ITransaction;
-              transactions.push({
-                id: doc.id,
-                ...data,
-                createdAt: new Date(data.createdAt),
-              });
+              const data = doc.data();
+              
+              console.log('DEBUG useFirebaseTransactionSync: Documento Firebase completo:', data);
+              console.log('DEBUG useFirebaseTransactionSync: categoryId no Firebase:', data.categoryId);
+              console.log('DEBUG useFirebaseTransactionSync: paymentId no Firebase:', data.paymentId);
+              console.log('DEBUG useFirebaseTransactionSync: category no Firebase:', data.category);
+              console.log('DEBUG useFirebaseTransactionSync: payment no Firebase:', data.payment);
+              
+              // Converter dados do Firebase para entidade Transaction
+              const transaction = new Transaction(
+                doc.id,
+                data.userId,
+                data.category || data.categoryId, // Compatibilidade com formato antigo
+                data.paymentMethod || data.payment, // Compatibilidade com formato antigo
+                data.value,
+                data.date?.toDate() || data.dataTransaction, // Compatibilidade com formato antigo
+                data.status || 'completed',
+                data.description || '',
+                data.comprovanteURL || data.receiptUrl || null,
+                data.createdAt?.toDate() || new Date(),
+                data.updatedAt?.toDate() || new Date()
+              );
+              
+              console.log('DEBUG useFirebaseTransactionSync: Transaction criada:', transaction);
+              
+              transactions.push(transaction);
             });
 
             // Dispatch action para atualizar transações no Redux
-            dispatch({ 
-              type: 'transactions/syncTransactions', 
-              payload: transactions 
+            const serializedTransactions = transactions.map(transaction => {
+              const plainObject = transaction.toPlainObject();
+              // Garantir que as datas são strings serializáveis
+              return {
+                ...plainObject,
+                date: plainObject.date instanceof Date ? plainObject.date.toISOString() : plainObject.date,
+                createdAt: plainObject.createdAt instanceof Date ? plainObject.createdAt.toISOString() : plainObject.createdAt,
+                updatedAt: plainObject.updatedAt instanceof Date ? plainObject.updatedAt.toISOString() : plainObject.updatedAt,
+              };
             });
+            
+            console.log('useFirebaseTransactionSync: Processadas', transactions.length, 'transações via Firebase');
+            
+            dispatch(subscriptionUpdate(serializedTransactions));
           },
           (error) => {
             console.error('Erro na sincronização em tempo real:', error);
-            // Dispatch error para o Redux
-            dispatch({ 
-              type: 'transactions/syncError', 
-              payload: error.message 
-            });
+            // Para erros, mantem as transações atuais mas loga o erro
+            console.error('Firebase sync error:', error.message);
           }
         );
       } catch (error: any) {
         console.error('Erro ao configurar listener:', error);
-        dispatch({ 
-          type: 'transactions/syncError', 
-          payload: error.message 
-        });
+        console.error('Setup listener error:', error.message);
       }
     };
 
@@ -95,7 +142,7 @@ export const useFirebaseTransactionSync = () => {
         unsubscribeRef.current = null;
       }
     };
-  }, [dispatch, isAuthenticated, user?._id]);
+  }, [dispatch, isAuthenticated, user?.id, user?._id]);
 
   // Cleanup no unmount
   useEffect(() => {
@@ -109,7 +156,7 @@ export const useFirebaseTransactionSync = () => {
   return {
     // Retorna informações úteis sobre o estado da sincronização
     isListening: !!unsubscribeRef.current,
-    userId: user?._id || null,
+    userId: user?.id || user?._id || null,
     isAuthenticated,
   };
 };

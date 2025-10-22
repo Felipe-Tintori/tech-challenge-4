@@ -77,10 +77,14 @@ export default function RegistrationScreen() {
   const onSubmit = async (data: IForm) => {
     try {
       const result = await register(data.email, data.senha, data.name);
+      
       if (result.meta.requestStatus === 'fulfilled') {
         navigation.navigate("Home");
-      } else {
+      } else if (result.meta.requestStatus === 'rejected') {
+        // Erro de validação ou outro erro do backend
         showSnackbar(result.payload as string || "Erro ao cadastrar.");
+      } else {
+        showSnackbar("Erro inesperado ao cadastrar.");
       }
     } catch (error: any) {
       showSnackbar(error.message || "Erro ao cadastrar.");
@@ -137,6 +141,12 @@ export default function RegistrationScreen() {
           </TouchableOpacity>
         </View>
       </Animated.View>
+      <BytebankSnackbar
+        visible={snackbarVisible}
+        message={snackbarMessage}
+        type={typeSnackbar.ERROR}
+        onDismiss={() => setSnackbarVisible(false)}
+      />
       <BytebankLoading visible={isLoading} message="Registrando usuário..." />
     </View>
   );

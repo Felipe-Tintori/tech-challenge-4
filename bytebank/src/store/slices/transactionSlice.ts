@@ -1,24 +1,46 @@
-import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { 
-  collection, 
-  query, 
-  where, 
-  onSnapshot, 
-  orderBy, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc,
-  getDocs 
-} from 'firebase/firestore';
-import { db } from '../../services/firebaseConfig';
-import { ITransaction } from '../../interface/transaction';
-import { IFirebaseCollection } from '../../enum/firebaseCollection';
+  createTransactionAsync, 
+  updateTransactionAsync, 
+  deleteTransactionAsync, 
+  fetchTransactionsAsync,
+  fetchTransactionsByFiltersAsync,
+  fetchTransactionByIdAsync,
+  fetchTransactionStatisticsAsync,
+  uploadReceiptAsync,
+  removeReceiptAsync
+} from '../../presentation/adapters/transactionThunks';
+import { TransactionStatistics } from '../../domain/repositories/ITransactionRepository';
 
-// Types
+// Interface simplificada para o Redux state (plain objects, não classes)
+interface Transaction {
+  id: string;
+  userId: string;
+  category: string;
+  paymentMethod: string;
+  value: number;
+  date: string; // ISO string para serialização
+  status: string;
+  description?: string;
+  receiptUrl?: string;
+  createdAt: string; // ISO string para serialização
+  updatedAt: string; // ISO string para serialização
+}
+
+interface TransactionFilters {
+  category?: string;
+  paymentMethod?: string;
+  status?: string;
+  startDate?: string; // ISO string para serialização
+  endDate?: string; // ISO string para serialização
+  minValue?: number;
+  maxValue?: number;
+}
+
 interface TransactionState {
-  transactions: ITransaction[];
-  filteredTransactions: ITransaction[];
+  transactions: Transaction[];
+  filteredTransactions: Transaction[];
+  currentTransaction: Transaction | null;
   isLoading: boolean;
   error: string | null;
   filters: TransactionFilters;
@@ -27,165 +49,80 @@ interface TransactionState {
     itemsPerPage: number;
     totalPages: number;
   };
-  statistics: {
-    totalTransactions: number;
-    totalValue: number;
-    totalIncome: number;
-    totalExpense: number;
-  };
+  statistics: TransactionStatistics | null;
+  subscriptionActive: boolean;
 }
 
-interface TransactionFilters {
-  startDate?: string;
-  endDate?: string;
-  category?: string;
-  paymentMethod?: string;
-  minValue?: number;
-  maxValue?: number;
-}
-
-interface CreateTransactionPayload {
-  userId: string;
-  category: string;
-  categoryId: string;
-  payment: string;
-  paymentId: string;
-  value: number;
-  dataTransaction: string;
-  comprovanteURL?: string;
-  status: string;
-}
-
-// Async Thunks
-export const fetchTransactions = createAsyncThunk(
-  'transactions/fetchTransactions',
-  async (userId: string, { rejectWithValue }) => {
-    try {
-      const q = query(
-        collection(db, IFirebaseCollection.TRANSACTION),
-        where("userId", "==", userId),
-        orderBy("createdAt", "desc")
-      );
-      
-      const querySnapshot = await getDocs(q);
-      const transactions: ITransaction[] = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data() as ITransaction;
-        transactions.push({
-          id: doc.id,
-          ...data,
-          createdAt: new Date(data.createdAt),
-        });
-      });
-      
-      return transactions;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const createTransaction = createAsyncThunk(
-  'transactions/createTransaction',
-  async (transactionData: CreateTransactionPayload, { rejectWithValue }) => {
-    try {
-      const docRef = await addDoc(
-        collection(db, IFirebaseCollection.TRANSACTION),
-        {
-          ...transactionData,
-          createdAt: new Date(),
-        }
-      );
-      
-      return {
-        id: docRef.id,
-        ...transactionData,
-        createdAt: new Date(),
-      } as ITransaction;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const updateTransaction = createAsyncThunk(
-  'transactions/updateTransaction',
-  async ({ id, ...updateData }: Partial<ITransaction> & { id: string }, { rejectWithValue }) => {
-    try {
-      const transactionRef = doc(db, IFirebaseCollection.TRANSACTION, id);
-      await updateDoc(transactionRef, {
-        ...updateData,
-        updatedAt: new Date(),
-      });
-      
-      return { id, ...updateData };
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-export const deleteTransaction = createAsyncThunk(
-  'transactions/deleteTransaction',
-  async (id: string, { rejectWithValue }) => {
-    try {
-      await deleteDoc(doc(db, IFirebaseCollection.TRANSACTION, id));
-      return id;
-    } catch (error: any) {
-      return rejectWithValue(error.message);
-    }
-  }
-);
-
-// Helper function to filter transactions
-const applyFilters = (transactions: ITransaction[], filters: TransactionFilters): ITransaction[] => {
-  return transactions.filter(transaction => {
-    if (filters.startDate && new Date(transaction.dataTransaction) < new Date(filters.startDate)) {
+// Helper functions
+const applyFilters = (transactions: Transaction[], filters: TransactionFilters): Transaction[] => {
+  console.log('DEBUG applyFilters: Transações antes do filtro:', transactions.length);
+  console.log('DEBUG applyFilters: Filtros aplicados:', filters);
+  
+  const filteredTransactions = transactions.filter(transaction => {
+    console.log('DEBUG applyFilters: Verificando transação:', {
+      id: transaction.id,
+      category: transaction.category,
+      paymentMethod: transaction.paymentMethod,
+      payment: (transaction as any).payment,
+      status: transaction.status,
+      date: transaction.date,
+      value: transaction.value
+    });
+    
+    if (filters.startDate && new Date(transaction.date) < new Date(filters.startDate)) {
+      console.log('DEBUG applyFilters: Rejeitada por startDate');
       return false;
     }
-    if (filters.endDate && new Date(transaction.dataTransaction) > new Date(filters.endDate)) {
+    if (filters.endDate && new Date(transaction.date) > new Date(filters.endDate)) {
+      console.log('DEBUG applyFilters: Rejeitada por endDate');
       return false;
     }
     if (filters.category && transaction.category !== filters.category) {
+      console.log('DEBUG applyFilters: Rejeitada por category', {
+        transactionCategory: transaction.category,
+        filterCategory: filters.category,
+        areEqual: transaction.category === filters.category
+      });
       return false;
     }
-    if (filters.paymentMethod && transaction.payment !== filters.paymentMethod) {
+    // Verificar tanto paymentMethod quanto payment para compatibilidade
+    if (filters.paymentMethod && 
+        transaction.paymentMethod !== filters.paymentMethod && 
+        (transaction as any).payment !== filters.paymentMethod) {
+      console.log('DEBUG applyFilters: Rejeitada por paymentMethod', {
+        transactionPaymentMethod: transaction.paymentMethod,
+        transactionPayment: (transaction as any).payment,
+        filterPaymentMethod: filters.paymentMethod,
+        paymentMethodEqual: transaction.paymentMethod === filters.paymentMethod,
+        paymentEqual: (transaction as any).payment === filters.paymentMethod
+      });
+      return false;
+    }
+    if (filters.status && transaction.status !== filters.status) {
+      console.log('DEBUG applyFilters: Rejeitada por status', transaction.status, '!==', filters.status);
       return false;
     }
     if (filters.minValue && transaction.value < filters.minValue) {
+      console.log('DEBUG applyFilters: Rejeitada por minValue');
       return false;
     }
     if (filters.maxValue && transaction.value > filters.maxValue) {
+      console.log('DEBUG applyFilters: Rejeitada por maxValue');
       return false;
     }
+    console.log('DEBUG applyFilters: Transação aprovada');
     return true;
   });
-};
-
-// Helper function to calculate statistics
-const calculateStatistics = (transactions: ITransaction[]) => {
-  const totalTransactions = transactions.length;
-  const totalValue = transactions.reduce((sum, t) => sum + t.value, 0);
-  const totalIncome = transactions
-    .filter(t => t.category !== 'Saque')
-    .reduce((sum, t) => sum + t.value, 0);
-  const totalExpense = transactions
-    .filter(t => t.category === 'Saque')
-    .reduce((sum, t) => sum + t.value, 0);
-
-  return {
-    totalTransactions,
-    totalValue,
-    totalIncome,
-    totalExpense,
-  };
+  
+  console.log('DEBUG applyFilters: Transações após filtro:', filteredTransactions.length);
+  return filteredTransactions;
 };
 
 // Initial State
 const initialState: TransactionState = {
   transactions: [],
   filteredTransactions: [],
+  currentTransaction: null,
   isLoading: false,
   error: null,
   filters: {},
@@ -194,12 +131,8 @@ const initialState: TransactionState = {
     itemsPerPage: 10,
     totalPages: 0,
   },
-  statistics: {
-    totalTransactions: 0,
-    totalValue: 0,
-    totalIncome: 0,
-    totalExpense: 0,
-  },
+  statistics: null,
+  subscriptionActive: false,
 };
 
 // Transaction Slice
@@ -213,14 +146,12 @@ const transactionSlice = createSlice({
     setFilters: (state, action: PayloadAction<TransactionFilters>) => {
       state.filters = action.payload;
       state.filteredTransactions = applyFilters(state.transactions, action.payload);
-      state.statistics = calculateStatistics(state.filteredTransactions);
       state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       state.pagination.currentPage = 0;
     },
     clearFilters: (state) => {
       state.filters = {};
       state.filteredTransactions = state.transactions;
-      state.statistics = calculateStatistics(state.transactions);
       state.pagination.totalPages = Math.ceil(state.transactions.length / state.pagination.itemsPerPage);
       state.pagination.currentPage = 0;
     },
@@ -232,95 +163,175 @@ const transactionSlice = createSlice({
       state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / action.payload);
       state.pagination.currentPage = 0;
     },
+    setCurrentTransaction: (state, action: PayloadAction<Transaction | null>) => {
+      state.currentTransaction = action.payload;
+    },
     resetTransactionState: () => initialState,
+    
     // Actions para sincronização em tempo real
-    syncTransactions: (state, action: PayloadAction<ITransaction[]>) => {
+    subscriptionUpdate: (state, action: PayloadAction<Transaction[]>) => {
       state.transactions = action.payload;
       state.filteredTransactions = applyFilters(action.payload, state.filters);
-      state.statistics = calculateStatistics(state.filteredTransactions);
       state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
-      state.isLoading = false;
-      state.error = null;
+      state.subscriptionActive = true;
     },
-    syncError: (state, action: PayloadAction<string>) => {
-      state.error = action.payload;
-      state.isLoading = false;
-    },
-    setSyncLoading: (state, action: PayloadAction<boolean>) => {
-      state.isLoading = action.payload;
+    setSubscriptionStatus: (state, action: PayloadAction<boolean>) => {
+      state.subscriptionActive = action.payload;
     },
   },
   extraReducers: (builder) => {
     // Fetch transactions
     builder
-      .addCase(fetchTransactions.pending, (state) => {
+      .addCase(fetchTransactionsAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(fetchTransactions.fulfilled, (state, action) => {
+      .addCase(fetchTransactionsAsync.fulfilled, (state, action) => {
         state.isLoading = false;
         state.transactions = action.payload;
         state.filteredTransactions = applyFilters(action.payload, state.filters);
-        state.statistics = calculateStatistics(state.filteredTransactions);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
-      .addCase(fetchTransactions.rejected, (state, action) => {
+      .addCase(fetchTransactionsAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch transactions by filters
+    builder
+      .addCase(fetchTransactionsByFiltersAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchTransactionsByFiltersAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.filteredTransactions = action.payload;
+        state.pagination.totalPages = Math.ceil(action.payload.length / state.pagination.itemsPerPage);
+      })
+      .addCase(fetchTransactionsByFiltersAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch transaction by ID
+    builder
+      .addCase(fetchTransactionByIdAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchTransactionByIdAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.currentTransaction = action.payload;
+      })
+      .addCase(fetchTransactionByIdAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
 
     // Create transaction
     builder
-      .addCase(createTransaction.pending, (state) => {
+      .addCase(createTransactionAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(createTransaction.fulfilled, (state, action) => {
+      .addCase(createTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
         state.transactions.unshift(action.payload);
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
-        state.statistics = calculateStatistics(state.filteredTransactions);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
-      .addCase(createTransaction.rejected, (state, action) => {
+      .addCase(createTransactionAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
 
     // Update transaction
     builder
-      .addCase(updateTransaction.pending, (state) => {
+      .addCase(updateTransactionAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(updateTransaction.fulfilled, (state, action) => {
+      .addCase(updateTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        const index = state.transactions.findIndex(t => t.id === action.payload.id);
+        const index = state.transactions.findIndex((t: Transaction) => t.id === action.payload.id);
         if (index !== -1) {
-          state.transactions[index] = { ...state.transactions[index], ...action.payload };
+          state.transactions[index] = action.payload;
         }
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
-        state.statistics = calculateStatistics(state.filteredTransactions);
       })
-      .addCase(updateTransaction.rejected, (state, action) => {
+      .addCase(updateTransactionAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
 
     // Delete transaction
     builder
-      .addCase(deleteTransaction.pending, (state) => {
+      .addCase(deleteTransactionAsync.pending, (state) => {
         state.isLoading = true;
         state.error = null;
       })
-      .addCase(deleteTransaction.fulfilled, (state, action) => {
+      .addCase(deleteTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.transactions = state.transactions.filter(t => t.id !== action.payload);
+        state.transactions = state.transactions.filter((t: Transaction) => t.id !== action.payload);
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
-        state.statistics = calculateStatistics(state.filteredTransactions);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
-      .addCase(deleteTransaction.rejected, (state, action) => {
+      .addCase(deleteTransactionAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
+
+    // Fetch statistics
+    builder
+      .addCase(fetchTransactionStatisticsAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(fetchTransactionStatisticsAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        state.statistics = action.payload;
+      })
+      .addCase(fetchTransactionStatisticsAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
+
+    // Upload receipt
+    builder
+      .addCase(uploadReceiptAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(uploadReceiptAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        const { transactionId, receiptUrl } = action.payload;
+        const index = state.transactions.findIndex((t: Transaction) => t.id === transactionId);
+        if (index !== -1) {
+          state.transactions[index].receiptUrl = receiptUrl;
+        }
+        state.filteredTransactions = applyFilters(state.transactions, state.filters);
+      })
+      .addCase(uploadReceiptAsync.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload as string;
+      });
+
+    // Remove receipt
+    builder
+      .addCase(removeReceiptAsync.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(removeReceiptAsync.fulfilled, (state, action) => {
+        state.isLoading = false;
+        const transactionId = action.payload;
+        const index = state.transactions.findIndex((t: Transaction) => t.id === transactionId);
+        if (index !== -1) {
+          state.transactions[index].receiptUrl = undefined;
+        }
+        state.filteredTransactions = applyFilters(state.transactions, state.filters);
+      })
+      .addCase(removeReceiptAsync.rejected, (state, action) => {
         state.isLoading = false;
         state.error = action.payload as string;
       });
@@ -333,10 +344,10 @@ export const {
   clearFilters, 
   setCurrentPage, 
   setItemsPerPage, 
+  setCurrentTransaction,
   resetTransactionState,
-  syncTransactions,
-  syncError,
-  setSyncLoading
+  subscriptionUpdate,
+  setSubscriptionStatus
 } = transactionSlice.actions;
 
 export default transactionSlice.reducer;

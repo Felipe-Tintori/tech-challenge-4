@@ -47,7 +47,7 @@ const getMonthData = (transactions: ITransaction[] = []) => {
 };
 
 export default function Charts() {
-  const { allTransactions } = useTransactions();
+  const { allTransactionsLegacy: allTransactions } = useTransactions();
 
   const monthData = getMonthData(allTransactions || []);
 

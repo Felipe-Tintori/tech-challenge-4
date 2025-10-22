@@ -52,19 +52,19 @@ export default function Filter({ onClose, onFilter, user }: FilterProps) {
       // Em vez de fazer query no Firebase, passamos os critérios para o Redux
       const filterCriteria: any = {};
 
+      // CORREÇÃO: Agora enviamos o ID diretamente (não o label)
       if (data.categoria) {
-        // Encontrar a categoria selecionada
-        const selectedCategory = categories.find(cat => cat.id === data.categoria);
-        filterCriteria.category = selectedCategory?.label;
+        filterCriteria.category = data.categoria;
       }
       
       if (data.metodoPagamento) {
-        // Encontrar o método de pagamento selecionado  
-        const selectedPayment = paymentMethods.find(method => method.id === data.metodoPagamento);
-        filterCriteria.paymentMethod = selectedPayment?.label;
+        // CORREÇÃO: Agora enviamos o ID diretamente (não o label)
+        filterCriteria.paymentMethod = data.metodoPagamento;
       }
 
-      console.log("Aplicando critérios de filtro:", filterCriteria);
+      console.log("DEBUG Filter: Aplicando critérios de filtro:", filterCriteria);
+      console.log("DEBUG Filter: data.categoria (ID selecionado):", data.categoria);
+      console.log("DEBUG Filter: data.metodoPagamento (ID selecionado):", data.metodoPagamento);
       
       onFilter(filterCriteria);
       if (onClose) {

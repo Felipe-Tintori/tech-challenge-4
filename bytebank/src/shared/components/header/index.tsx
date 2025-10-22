@@ -19,7 +19,8 @@ export default function BytebankHeader() {
   const handleLogout = async () => {
     setMenuVisible(false);
     await signOut(auth);
-    navigation.navigate("Login");
+    // Não precisa navegar manualmente - o navigator fará isso automaticamente
+    // quando isAuthenticated mudar para false
   };
 
   return (
