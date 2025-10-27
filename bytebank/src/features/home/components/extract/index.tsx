@@ -1,24 +1,26 @@
 // src/screens/home/components/extract/index.tsx
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, lazy, Suspense } from "react";
 import {
   View,
   FlatList,
   TouchableOpacity,
   Alert,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { Text, IconButton, Menu, Divider, Portal } from "react-native-paper";
 import { useTransactions } from "../../../../store/hooks/useTransactions";
 import { ITransaction } from "../../../../interface/transaction";
 import BytebankLoading from "../../../../shared/components/loading";
 import { styles } from "./styles";
-import DeleteModal from "./components/deleteModal";
-import EditModal from "./components/editModal";
 import { CategoryCollection } from "../../../../enum/categoryCollection";
-import Filter from "../filter";
 import { FilterButton } from "./components/filterButton";
 import { useCategories } from "../../../../shared/hooks/useCategories";
 import { usePaymentMethods } from "../../../../shared/hooks/usePaymentMethods";
+
+// ⚡ LAZY LOADING: Carrega modais apenas quando necessário
+const DeleteModal = lazy(() => import("./components/deleteModal"));
+const EditModal = lazy(() => import("./components/editModal"));
 
 export default function Extract() {
   const { allTransactionsLegacy, filteredTransactionsLegacy, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
@@ -304,11 +306,14 @@ export default function Extract() {
   if (editModalVisible && transactionToEdit) {
     return (
       <Portal>
-        <EditModal 
-          transaction={transactionToEdit}
-          onClose={handleCloseEdit}
-          onSave={handleSaveEdit}
-        />
+        {/* ⚡ Lazy Loading: EditModal carregado sob demanda */}
+        <Suspense fallback={<BytebankLoading visible={true} message="Carregando edição..." />}>
+          <EditModal 
+            transaction={transactionToEdit}
+            onClose={handleCloseEdit}
+            onSave={handleSaveEdit}
+          />
+        </Suspense>
       </Portal>
     );
   }
@@ -338,11 +343,14 @@ export default function Extract() {
         contentContainerStyle={styles.listContainer}
         ItemSeparatorComponent={() => <View style={styles.separator} />}
       />
-      <DeleteModal
-        visibleModal={deleteModalVisible}
-        transaction={transactionToDelete}
-        onCancel={handleCancelDelete}
-      />
+      {/* ⚡ Lazy Loading: Modais carregados sob demanda */}
+      <Suspense fallback={<ActivityIndicator size="small" />}>
+        <DeleteModal
+          visibleModal={deleteModalVisible}
+          transaction={transactionToDelete}
+          onCancel={handleCancelDelete}
+        />
+      </Suspense>
     </View>
   );
 }
