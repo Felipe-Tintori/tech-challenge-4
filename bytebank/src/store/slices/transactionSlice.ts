@@ -11,21 +11,8 @@ import {
   removeReceiptAsync
 } from '../../presentation/adapters/transactionThunks';
 import { TransactionStatistics } from '../../domain/repositories/ITransactionRepository';
-
-// Interface simplificada para o Redux state (plain objects, não classes)
-interface Transaction {
-  id: string;
-  userId: string;
-  category: string;
-  paymentMethod: string;
-  value: number;
-  date: string; // ISO string para serialização
-  status: string;
-  description?: string;
-  receiptUrl?: string;
-  createdAt: string; // ISO string para serialização
-  updatedAt: string; // ISO string para serialização
-}
+import { ITransaction } from '../../interface/transaction';
+import { transactionToLegacy, transactionsToLegacy } from '../../shared/adapters/transactionAdapter';
 
 interface TransactionFilters {
   category?: string;
@@ -37,10 +24,10 @@ interface TransactionFilters {
   maxValue?: number;
 }
 
-interface TransactionState {
-  transactions: Transaction[];
-  filteredTransactions: Transaction[];
-  currentTransaction: Transaction | null;
+export interface TransactionState {
+  transactions: ITransaction[];
+  filteredTransactions: ITransaction[];
+  currentTransaction: ITransaction | null;
   isLoading: boolean;
   error: string | null;
   filters: TransactionFilters;
@@ -51,10 +38,13 @@ interface TransactionState {
   };
   statistics: TransactionStatistics | null;
   subscriptionActive: boolean;
+  page?: number;
+  hasMore?: boolean;
+  loading?: boolean;
 }
 
 // Helper functions
-const applyFilters = (transactions: Transaction[], filters: TransactionFilters): Transaction[] => {
+const applyFilters = (transactions: ITransaction[], filters: TransactionFilters): ITransaction[] => {
   console.log('DEBUG applyFilters: Transações antes do filtro:', transactions.length);
   console.log('DEBUG applyFilters: Filtros aplicados:', filters);
   
@@ -62,18 +52,17 @@ const applyFilters = (transactions: Transaction[], filters: TransactionFilters):
     console.log('DEBUG applyFilters: Verificando transação:', {
       id: transaction.id,
       category: transaction.category,
-      paymentMethod: transaction.paymentMethod,
-      payment: (transaction as any).payment,
+      paymentMethod: transaction.payment,
       status: transaction.status,
-      date: transaction.date,
+      date: transaction.dataTransaction,
       value: transaction.value
     });
     
-    if (filters.startDate && new Date(transaction.date) < new Date(filters.startDate)) {
+    if (filters.startDate && new Date(transaction.dataTransaction) < new Date(filters.startDate)) {
       console.log('DEBUG applyFilters: Rejeitada por startDate');
       return false;
     }
-    if (filters.endDate && new Date(transaction.date) > new Date(filters.endDate)) {
+    if (filters.endDate && new Date(transaction.dataTransaction) > new Date(filters.endDate)) {
       console.log('DEBUG applyFilters: Rejeitada por endDate');
       return false;
     }
@@ -85,16 +74,12 @@ const applyFilters = (transactions: Transaction[], filters: TransactionFilters):
       });
       return false;
     }
-    // Verificar tanto paymentMethod quanto payment para compatibilidade
-    if (filters.paymentMethod && 
-        transaction.paymentMethod !== filters.paymentMethod && 
-        (transaction as any).payment !== filters.paymentMethod) {
+    // Verificar payment para compatibilidade
+    if (filters.paymentMethod && transaction.payment !== filters.paymentMethod) {
       console.log('DEBUG applyFilters: Rejeitada por paymentMethod', {
-        transactionPaymentMethod: transaction.paymentMethod,
-        transactionPayment: (transaction as any).payment,
+        transactionPayment: transaction.payment,
         filterPaymentMethod: filters.paymentMethod,
-        paymentMethodEqual: transaction.paymentMethod === filters.paymentMethod,
-        paymentEqual: (transaction as any).payment === filters.paymentMethod
+        paymentEqual: transaction.payment === filters.paymentMethod
       });
       return false;
     }
@@ -133,6 +118,9 @@ const initialState: TransactionState = {
   },
   statistics: null,
   subscriptionActive: false,
+  page: 0,
+  hasMore: true,
+  loading: false,
 };
 
 // Transaction Slice
@@ -163,13 +151,13 @@ const transactionSlice = createSlice({
       state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / action.payload);
       state.pagination.currentPage = 0;
     },
-    setCurrentTransaction: (state, action: PayloadAction<Transaction | null>) => {
+    setCurrentTransaction: (state, action: PayloadAction<ITransaction | null>) => {
       state.currentTransaction = action.payload;
     },
     resetTransactionState: () => initialState,
     
     // Actions para sincronização em tempo real
-    subscriptionUpdate: (state, action: PayloadAction<Transaction[]>) => {
+    subscriptionUpdate: (state, action: PayloadAction<ITransaction[]>) => {
       state.transactions = action.payload;
       state.filteredTransactions = applyFilters(action.payload, state.filters);
       state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
@@ -188,8 +176,9 @@ const transactionSlice = createSlice({
       })
       .addCase(fetchTransactionsAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.transactions = action.payload;
-        state.filteredTransactions = applyFilters(action.payload, state.filters);
+        const legacyTransactions = transactionsToLegacy(action.payload as any);
+        state.transactions = legacyTransactions;
+        state.filteredTransactions = applyFilters(legacyTransactions, state.filters);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
       .addCase(fetchTransactionsAsync.rejected, (state, action) => {
@@ -205,8 +194,8 @@ const transactionSlice = createSlice({
       })
       .addCase(fetchTransactionsByFiltersAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.filteredTransactions = action.payload;
-        state.pagination.totalPages = Math.ceil(action.payload.length / state.pagination.itemsPerPage);
+        state.filteredTransactions = transactionsToLegacy(action.payload as any);
+        state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
       .addCase(fetchTransactionsByFiltersAsync.rejected, (state, action) => {
         state.isLoading = false;
@@ -221,7 +210,7 @@ const transactionSlice = createSlice({
       })
       .addCase(fetchTransactionByIdAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.currentTransaction = action.payload;
+        state.currentTransaction = action.payload ? transactionToLegacy(action.payload as any) : null;
       })
       .addCase(fetchTransactionByIdAsync.rejected, (state, action) => {
         state.isLoading = false;
@@ -236,7 +225,7 @@ const transactionSlice = createSlice({
       })
       .addCase(createTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.transactions.unshift(action.payload);
+        state.transactions.unshift(transactionToLegacy(action.payload as any));
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
@@ -253,9 +242,9 @@ const transactionSlice = createSlice({
       })
       .addCase(updateTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        const index = state.transactions.findIndex((t: Transaction) => t.id === action.payload.id);
+        const index = state.transactions.findIndex((t: ITransaction) => t.id === (action.payload as any).id);
         if (index !== -1) {
-          state.transactions[index] = action.payload;
+          state.transactions[index] = transactionToLegacy(action.payload as any);
         }
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
       })
@@ -272,7 +261,7 @@ const transactionSlice = createSlice({
       })
       .addCase(deleteTransactionAsync.fulfilled, (state, action) => {
         state.isLoading = false;
-        state.transactions = state.transactions.filter((t: Transaction) => t.id !== action.payload);
+        state.transactions = state.transactions.filter((t: ITransaction) => t.id !== action.payload);
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
         state.pagination.totalPages = Math.ceil(state.filteredTransactions.length / state.pagination.itemsPerPage);
       })
@@ -305,9 +294,9 @@ const transactionSlice = createSlice({
       .addCase(uploadReceiptAsync.fulfilled, (state, action) => {
         state.isLoading = false;
         const { transactionId, receiptUrl } = action.payload;
-        const index = state.transactions.findIndex((t: Transaction) => t.id === transactionId);
+        const index = state.transactions.findIndex((t: ITransaction) => t.id === transactionId);
         if (index !== -1) {
-          state.transactions[index].receiptUrl = receiptUrl;
+          state.transactions[index].comprovanteURL = receiptUrl;
         }
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
       })
@@ -325,9 +314,9 @@ const transactionSlice = createSlice({
       .addCase(removeReceiptAsync.fulfilled, (state, action) => {
         state.isLoading = false;
         const transactionId = action.payload;
-        const index = state.transactions.findIndex((t: Transaction) => t.id === transactionId);
+        const index = state.transactions.findIndex((t: ITransaction) => t.id === transactionId);
         if (index !== -1) {
-          state.transactions[index].receiptUrl = undefined;
+          state.transactions[index].comprovanteURL = undefined;
         }
         state.filteredTransactions = applyFilters(state.transactions, state.filters);
       })

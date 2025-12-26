@@ -1,6 +1,7 @@
-import { configureStore, combineReducers, Middleware } from '@reduxjs/toolkit';
+import { configureStore, combineReducers, Middleware, AnyAction } from '@reduxjs/toolkit';
 import { persistStore, persistReducer, FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER } from 'redux-persist';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createEpicMiddleware } from 'redux-observable';
 
 // Reducers
 import authReducer from './slices/authSlice';
@@ -14,6 +15,9 @@ import {
   errorMiddleware, 
   analyticsMiddleware 
 } from './middleware/simpleMiddleware';
+
+// Reactive Programming - Redux Observable
+import { rootEpic } from '../shared/reactive';
 
 // Persist config
 const persistConfig = {
@@ -33,6 +37,9 @@ const rootReducer = combineReducers({
 // Persisted reducer
 const persistedReducer = persistReducer(persistConfig, rootReducer);
 
+// Create epic middleware for reactive programming
+const epicMiddleware = createEpicMiddleware<AnyAction, AnyAction, any>();
+
 // Configure store
 export const store = configureStore({
   reducer: persistedReducer,
@@ -42,6 +49,7 @@ export const store = configureStore({
         ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
       },
     }).concat(
+      epicMiddleware, // Redux Observable para programação reativa
       performanceMiddleware,
       loggingMiddleware,
       errorMiddleware,
@@ -49,6 +57,11 @@ export const store = configureStore({
     ),
   devTools: __DEV__,
 });
+
+// Inicializa os epics após criar o store
+epicMiddleware.run(rootEpic);
+
+console.log('🚀 Redux Store configurado com Redux Observable');
 
 // Persistor
 export const persistor = persistStore(store);

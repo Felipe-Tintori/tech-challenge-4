@@ -1,7 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { selectAllTransactions, selectTransactionLoading } from '../../store/selectors';
-import { fetchTransactions } from '../../store/slices/transactionSlice';
 import { ITransaction } from '../../interface/transaction';
 
 interface VirtualizationConfig {

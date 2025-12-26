@@ -1,11 +1,12 @@
 import { User, RegisterData } from '../../entities/User';
 import { IUserRepository } from '../../repositories/IUserRepository';
+import { ValidationService } from '../../../infrastructure/security';
 
 export class RegisterUseCase {
   constructor(private userRepository: IUserRepository) {}
 
   async execute(data: RegisterData): Promise<User> {
-    // Validações de entrada
+    // Validações de entrada com sanitização
     try {
       this.validateRegisterData(data);
     } catch (validationError) {
@@ -35,41 +36,25 @@ export class RegisterUseCase {
       throw new Error('Nome, email e senha são obrigatórios');
     }
 
-    if (data.name.length < 2) {
-      throw new Error('Nome deve ter pelo menos 2 caracteres');
+    // Valida e sanitiza nome
+    const nameValidation = ValidationService.name(data.name);
+    if (!nameValidation.isValid) {
+      throw new Error(nameValidation.error || 'Nome inválido');
     }
+    data.name = nameValidation.sanitized;
 
-    if (data.name.length > 50) {
-      throw new Error('Nome deve ter no máximo 50 caracteres');
+    // Valida e sanitiza email
+    const emailValidation = ValidationService.email(data.email);
+    if (!emailValidation.isValid) {
+      throw new Error(emailValidation.error || 'Email inválido');
     }
+    data.email = emailValidation.sanitized;
 
-    if (!this.isValidEmail(data.email)) {
-      throw new Error('Email inválido');
+    // Valida senha com critérios de segurança
+    const passwordValidation = ValidationService.password(data.password);
+    if (!passwordValidation.isValid) {
+      throw new Error(passwordValidation.error || 'Senha inválida');
     }
-
-    if (data.password.length < 6) {
-      throw new Error('Senha deve ter pelo menos 6 caracteres');
-    }
-
-    if (data.password.length > 50) {
-      throw new Error('Senha deve ter no máximo 50 caracteres');
-    }
-
-    if (!this.isStrongPassword(data.password)) {
-      throw new Error('Senha deve conter pelo menos uma letra e um número');
-    }
-  }
-
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  }
-
-  private isStrongPassword(password: string): boolean {
-    // Deve conter pelo menos uma letra e um número
-    const hasLetter = /[a-zA-Z]/.test(password);
-    const hasNumber = /\d/.test(password);
-    return hasLetter && hasNumber;
   }
 
   private handleRegisterError(error: any): Error {

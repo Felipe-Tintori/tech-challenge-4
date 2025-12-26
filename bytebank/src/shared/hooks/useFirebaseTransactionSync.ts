@@ -13,6 +13,7 @@ import { db } from '../../services/firebaseConfig';
 import { IFirebaseCollection } from '../../enum/firebaseCollection';
 import { Transaction } from '../../domain/entities/Transaction';
 import { subscriptionUpdate } from '../../store/slices/transactionSlice';
+import { transactionsToLegacy } from '../adapters/transactionAdapter';
 
 /**
  * Hook personalizado para sincronização em tempo real das transações com Firebase
@@ -105,21 +106,12 @@ export const useFirebaseTransactionSync = () => {
               transactions.push(transaction);
             });
 
-            // Dispatch action para atualizar transações no Redux
-            const serializedTransactions = transactions.map(transaction => {
-              const plainObject = transaction.toPlainObject();
-              // Garantir que as datas são strings serializáveis
-              return {
-                ...plainObject,
-                date: plainObject.date instanceof Date ? plainObject.date.toISOString() : plainObject.date,
-                createdAt: plainObject.createdAt instanceof Date ? plainObject.createdAt.toISOString() : plainObject.createdAt,
-                updatedAt: plainObject.updatedAt instanceof Date ? plainObject.updatedAt.toISOString() : plainObject.updatedAt,
-              };
-            });
+            // Converter para formato ITransaction usando o adapter
+            const legacyTransactions = transactionsToLegacy(transactions);
             
             console.log('useFirebaseTransactionSync: Processadas', transactions.length, 'transações via Firebase');
             
-            dispatch(subscriptionUpdate(serializedTransactions));
+            dispatch(subscriptionUpdate(legacyTransactions));
           },
           (error) => {
             console.error('Erro na sincronização em tempo real:', error);

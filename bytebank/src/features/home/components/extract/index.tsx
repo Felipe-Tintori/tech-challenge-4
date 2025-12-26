@@ -23,7 +23,7 @@ const DeleteModal = lazy(() => import("./components/deleteModal"));
 const EditModal = lazy(() => import("./components/editModal"));
 
 export default function Extract() {
-  const { allTransactionsLegacy, filteredTransactionsLegacy, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
+  const { allTransactions, filteredTransactions, filters, isLoading, error, removeTransaction, editTransaction } = useTransactions();
   const { categories } = useCategories();
   const { paymentMethods } = usePaymentMethods();
   const [transactionToDelete, setTransactionToDelete] =
@@ -39,8 +39,8 @@ export default function Extract() {
   // Determina quais transações usar baseado se há filtros ativos
   const activeTransactions = useMemo(() => {
     const hasActiveFilters = filters && Object.keys(filters).length > 0;
-    return hasActiveFilters ? filteredTransactionsLegacy : allTransactionsLegacy;
-  }, [filters, filteredTransactionsLegacy, allTransactionsLegacy]);
+    return hasActiveFilters ? filteredTransactions : allTransactions;
+  }, [filters, filteredTransactions, allTransactions]);
 
   const totalPages = Math.ceil((activeTransactions || []).length / itemsPerPage);
   const startIndex = currentPage * itemsPerPage;

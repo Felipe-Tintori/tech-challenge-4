@@ -1,11 +1,12 @@
 import { User, AuthCredentials } from '../../entities/User';
 import { IUserRepository } from '../../repositories/IUserRepository';
+import { ValidationService } from '../../../infrastructure/security';
 
 export class LoginUseCase {
   constructor(private userRepository: IUserRepository) {}
 
   async execute(credentials: AuthCredentials): Promise<User> {
-    // Validações de entrada
+    // Validações de entrada com sanitização
     this.validateCredentials(credentials);
     
     try {
@@ -27,18 +28,18 @@ export class LoginUseCase {
       throw new Error('Email e senha são obrigatórios');
     }
 
-    if (!this.isValidEmail(credentials.email)) {
-      throw new Error('Email inválido');
+    // Valida e sanitiza email
+    const emailValidation = ValidationService.email(credentials.email);
+    if (!emailValidation.isValid) {
+      throw new Error(emailValidation.error || 'Email inválido');
     }
+    credentials.email = emailValidation.sanitized;
 
-    if (credentials.password.length < 6) {
-      throw new Error('Senha deve ter pelo menos 6 caracteres');
+    // Valida senha
+    const passwordValidation = ValidationService.password(credentials.password);
+    if (!passwordValidation.isValid) {
+      throw new Error(passwordValidation.error || 'Senha inválida');
     }
-  }
-
-  private isValidEmail(email: string): boolean {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
   }
 
   private handleLoginError(error: any): Error {

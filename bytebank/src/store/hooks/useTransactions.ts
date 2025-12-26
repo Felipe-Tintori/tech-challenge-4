@@ -86,40 +86,6 @@ const selectRecentTransactions = createSelector(
   (transactions) => transactions.slice(0, 5)
 );
 
-const selectAllTransactionsLegacy = createSelector(
-  [selectAllTransactions],
-  (transactions) => transactions.map(t => ({
-    id: t.id,
-    userId: t.userId,
-    category: t.category as any,
-    categoryId: t.category,
-    payment: t.paymentMethod,
-    paymentId: t.paymentMethod,
-    value: t.value,
-    dataTransaction: t.date,
-    comprovanteURL: t.receiptUrl || (t as any).comprovanteURL, // Compatibilidade com ambos os campos
-    createdAt: new Date(t.createdAt),
-    status: t.status,
-  }))
-);
-
-const selectFilteredTransactionsLegacy = createSelector(
-  [selectFilteredTransactions],
-  (transactions) => transactions.map(t => ({
-    id: t.id,
-    userId: t.userId,
-    category: t.category as any,
-    categoryId: t.category,
-    payment: t.paymentMethod,
-    paymentId: t.paymentMethod,
-    value: t.value,
-    dataTransaction: t.date,
-    comprovanteURL: t.receiptUrl || (t as any).comprovanteURL, // Compatibilidade com ambos os campos
-    createdAt: new Date(t.createdAt),
-    status: t.status,
-  }))
-);
-
 export const useTransactions = () => {
   const dispatch = useAppDispatch();
 
@@ -129,8 +95,6 @@ export const useTransactions = () => {
   const paginatedTransactions = useAppSelector(selectPaginatedTransactions);
   const transactionsByCategory = useAppSelector(selectTransactionsByCategory);
   const recentTransactions = useAppSelector(selectRecentTransactions);
-  const allTransactionsLegacy = useAppSelector(selectAllTransactionsLegacy);
-  const filteredTransactionsLegacy = useAppSelector(selectFilteredTransactionsLegacy);
 
   // Selectors diretos para dados simples
   const currentTransaction = useAppSelector(state => state.transactions.currentTransaction);
@@ -223,7 +187,7 @@ export const useTransactions = () => {
 
   const getTransactionsByDateRange = useCallback((startDate: Date, endDate: Date) => {
     return allTransactions.filter(transaction => {
-      const transactionDate = new Date(transaction.date);
+      const transactionDate = new Date(transaction.dataTransaction);
       return transactionDate >= startDate && transactionDate <= endDate;
     });
   }, [allTransactions]);
@@ -237,7 +201,7 @@ export const useTransactions = () => {
   }, [statistics]);
 
   return {
-    // State - Clean Architecture format
+    // State - ITransaction format (usado em toda aplicação agora)
     allTransactions,
     filteredTransactions,
     paginatedTransactions,
@@ -250,10 +214,6 @@ export const useTransactions = () => {
     transactionsByCategory,
     recentTransactions,
     subscriptionActive,
-
-    // State - Legacy format (para componentes UI existentes)
-    allTransactionsLegacy,
-    filteredTransactionsLegacy,
 
     // Actions
     loadTransactions,
