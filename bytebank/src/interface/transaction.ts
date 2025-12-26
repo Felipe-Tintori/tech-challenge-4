@@ -10,6 +10,6 @@ export interface ITransaction {
   value: number;
   dataTransaction: string;
   comprovanteURL?: string | null;
-  createdAt: Date;
+  createdAt: string; // Mudando para string para serialização no Redux
   status: string;
 }

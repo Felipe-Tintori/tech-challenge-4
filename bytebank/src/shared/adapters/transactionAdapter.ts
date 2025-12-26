@@ -26,7 +26,7 @@ export const transactionToLegacy = (transaction: Transaction): ITransaction => {
     value: transaction.value,
     dataTransaction: transaction.date instanceof Date ? transaction.date.toISOString() : transaction.date,
     comprovanteURL: transaction.receiptUrl,
-    createdAt: transaction.createdAt instanceof Date ? transaction.createdAt : new Date(transaction.createdAt),
+    createdAt: transaction.createdAt instanceof Date ? transaction.createdAt.toISOString() : transaction.createdAt,
     status: transaction.status as string,
   };
   
@@ -55,7 +55,7 @@ export const legacyToTransaction = (legacy: ITransaction): Transaction => {
     legacy.status as TransactionStatus || TransactionStatus.REALIZADA,
     '', // description não existe no legacy
     legacy.comprovanteURL || undefined,
-    legacy.createdAt || new Date(),
+    typeof legacy.createdAt === 'string' ? new Date(legacy.createdAt) : legacy.createdAt || new Date(),
     new Date() // updatedAt não existe no legacy
   );
 };
